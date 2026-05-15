@@ -1,0 +1,135 @@
+/*
+ * Maxytest design tokens — Phase 1 Walking Skeleton
+ * Source of truth: .planning/phases/01-walking-skeleton/01-UI-SPEC.md §"Brand & Tokens"
+ *
+ * Tailwind v4 @theme block: tokens declared here become Tailwind utilities
+ * (e.g., `--color-accent` → `bg-accent`, `text-accent`, `border-accent`,
+ *  `--spacing-touch` → `min-h-touch`, `min-w-touch`).
+ *
+ * Dark-mode swap point: a future `:root.dark { ... }` override of the same
+ * variables flips the entire system. No toggle in Phase 1 (UI-SPEC.md).
+ */
+
+@theme {
+  /* -- Color: dominant / surface / accent (60/30/10 split) ---------------- */
+
+  /* Dominant 60% — page background */
+  --color-bg: #ffffff;
+  --color-background: #ffffff;
+
+  /* Secondary surface 30% — sidebar, panels */
+  --color-surface: #f8fafc; /* slate-50 */
+
+  /* Surface-2: cards */
+  --color-card: #ffffff;
+  --color-card-foreground: #0f172a;
+
+  /* Borders / dividers */
+  --color-border: #e2e8f0; /* slate-200 */
+  --color-border-strong: #cbd5e1; /* slate-300 */
+  --color-input: #e2e8f0;
+  --color-ring: #4f46e5;
+
+  /* Text */
+  --color-fg: #0f172a; /* slate-900 */
+  --color-foreground: #0f172a;
+  --color-fg-muted: #475569; /* slate-600 */
+  --color-muted-foreground: #475569;
+  --color-fg-subtle: #94a3b8; /* slate-400 */
+  --color-subtle: #94a3b8;
+
+  /* Muted surfaces (shadcn) */
+  --color-muted: #f1f5f9; /* slate-100 */
+
+  /* Popover (shadcn) */
+  --color-popover: #ffffff;
+  --color-popover-foreground: #0f172a;
+
+  /* Primary (mapped to accent so shadcn primary buttons inherit) */
+  --color-primary: #4f46e5;
+  --color-primary-foreground: #ffffff;
+
+  /* Secondary (shadcn) — slate surface */
+  --color-secondary: #f1f5f9;
+  --color-secondary-foreground: #0f172a;
+
+  /* Accent (10%) — indigo-600 */
+  --color-accent: #4f46e5; /* indigo-600 */
+  --color-accent-hover: #4338ca; /* indigo-700 */
+  --color-accent-foreground: #ffffff;
+
+  /* Semantic */
+  --color-success: #16a34a; /* green-600 */
+  --color-success-bg: #f0fdf4; /* green-50 */
+  --color-warning: #d97706; /* amber-600 */
+  --color-warning-bg: #fffbeb; /* amber-50 */
+  --color-destructive: #dc2626; /* red-600 */
+  --color-destructive-foreground: #ffffff;
+  --color-destructive-bg: #fef2f2; /* red-50 */
+  --color-info: #0284c7; /* sky-600 */
+  --color-info-bg: #f0f9ff; /* sky-50 */
+
+  /* -- Typography --------------------------------------------------------- */
+
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco,
+    Consolas, 'Liberation Mono', 'Courier New', monospace;
+
+  /* Type ramp — per UI-SPEC.md §Typography */
+  --text-display: 2.25rem; /* 36px */
+  --text-display--line-height: 1.15;
+  --text-h1: 1.75rem; /* 28px */
+  --text-h1--line-height: 1.2;
+  --text-h2: 1.25rem; /* 20px */
+  --text-h2--line-height: 1.3;
+  --text-h3: 1rem; /* 16px */
+  --text-h3--line-height: 1.4;
+  --text-body: 1rem; /* 16px */
+  --text-body--line-height: 1.5;
+  --text-small: 0.875rem; /* 14px */
+  --text-small--line-height: 1.5;
+  --text-caption: 0.75rem; /* 12px */
+  --text-caption--line-height: 1.4;
+
+  /* -- Spacing ------------------------------------------------------------ */
+  /*
+   * Tailwind v4 default 4px scale is affirmed.
+   * --spacing-touch maps to Tailwind utilities `min-h-touch`, `min-w-touch`, `h-touch`,
+   * etc. → 44×44px floor per WCAG 2.5.5 (D-24).
+   */
+  --spacing-touch: 44px;
+
+  /* -- Border radius ------------------------------------------------------ */
+
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius: 6px; /* shadcn default --radius reference */
+  --radius-md: 6px;
+  --radius-lg: 8px; /* block cards, dialogs */
+  --radius-xl: 12px; /* block catalog panel */
+  --radius-2xl: 16px; /* empty-state illustration container */
+  --radius-full: 9999px;
+
+  /* -- Shadow ------------------------------------------------------------- */
+
+  --shadow-xs: 0 1px 2px 0 rgb(15 23 42 / 0.04);
+  --shadow-sm: 0 1px 2px 0 rgb(15 23 42 / 0.05), 0 1px 1px 0 rgb(15 23 42 / 0.03);
+  --shadow-md: 0 4px 6px -1px rgb(15 23 42 / 0.07),
+    0 2px 4px -2px rgb(15 23 42 / 0.05);
+  --shadow-lg: 0 10px 15px -3px rgb(15 23 42 / 0.08),
+    0 4px 6px -4px rgb(15 23 42 / 0.05);
+  --shadow-xl: 0 20px 25px -5px rgb(15 23 42 / 0.10),
+    0 8px 10px -6px rgb(15 23 42 / 0.05);
+
+  /* -- Motion ------------------------------------------------------------- */
+
+  --duration-instant: 0ms;
+  --duration-fast: 100ms;
+  --duration-normal: 200ms;
+  --duration-slow: 300ms;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-linear: linear;
+}

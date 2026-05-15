@@ -1,0 +1,80 @@
+@import 'tailwindcss';
+@import './tokens.css';
+@import 'tw-animate-css';
+
+/*
+ * Maxytest global stylesheet — Phase 1 Walking Skeleton
+ *
+ * Layering:
+ *   1. tailwindcss               — utilities
+ *   2. ./tokens.css              — Maxytest design tokens (UI-SPEC.md §"Brand & Tokens")
+ *   3. tw-animate-css            — animation utilities used by shadcn primitives
+ *   4. @theme inline             — maps Maxytest tokens onto the variable names
+ *                                  shadcn-generated components reference (--primary,
+ *                                  --secondary, --accent, etc.)
+ *
+ * NOTE: shadcn-init injected a Geist preset; we removed that. UI-SPEC.md locks us
+ * to Inter (loaded via @fontsource/inter in main.tsx) and indigo #4F46E5.
+ *
+ * Dark mode: Phase 1 ships light-only per UI-SPEC §Design System. The `.dark`
+ * class is reserved for future polish phases; no toggle UI in Phase 1.
+ */
+
+/*
+ * shadcn token bridge: shadcn-generated components use bare variable names
+ * (e.g., `bg-primary` → `--primary`). We point those at the Maxytest accent
+ * so the smoke-test <Button variant="default"> background = --color-accent
+ * = #4F46E5 (must_haves.truths #5).
+ */
+@theme inline {
+  --color-background: var(--color-bg);
+  --color-foreground: var(--color-fg);
+
+  --color-primary: var(--color-accent);
+  --color-primary-foreground: var(--color-accent-foreground);
+
+  --color-secondary: var(--color-surface);
+  --color-secondary-foreground: var(--color-fg);
+
+  --color-muted: #f1f5f9; /* slate-100 */
+  --color-muted-foreground: var(--color-fg-muted);
+
+  --color-card: var(--color-card);
+  --color-card-foreground: var(--color-fg);
+
+  --color-popover: #ffffff;
+  --color-popover-foreground: var(--color-fg);
+
+  --color-input: var(--color-border);
+  --color-ring: var(--color-accent);
+}
+
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--color-border);
+  }
+
+  html {
+    font-family: var(--font-sans);
+    -webkit-text-size-adjust: 100%;
+    -moz-tab-size: 4;
+    tab-size: 4;
+  }
+
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Global focus-visible contract (UI-SPEC §Accessibility) */
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}
