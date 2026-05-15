@@ -1,18 +1,15 @@
 /**
- * <PreviewOverlay> — Plan 01-03 Task 8 / UI-SPEC.md §"Preview" + D-12.
+ * <PreviewOverlay> — Plan 01-03 Task 8 / Plan 01-05 Task 5 / UI-SPEC.md §"Preview" + D-12.
  *
- * Full-screen overlay that, in Plan 01-05, will mount the real `<RunnerShell
- * mode="preview" />`. Plan 01-03 ships a STUB so the Preview button is
- * functional end-to-end during builder verification.
- *
- * Contract for Plan 01-05:
- *   - `<RunnerShell mode="preview" blocks={Block[]} initialBlockIndex={0}
- *      onComplete={() => setPreviewOverlayOpen(false)} />`
- *   - When Plan 01-05 ships the real component, swap the stub block below
- *     with the import + invocation — no contract change.
+ * Full-screen overlay that mounts the REAL `<RunnerShell mode="preview" />`
+ * (Plan 01-05 swapped this from the Plan 01-03 stub). Designer clicks "Preview"
+ * in the workspace top bar → this opens → respondent-flavoured rendering
+ * against the in-flight draft blocks, no Supabase writes.
  *
  * On open: capture window.scrollY so close can restore it.
  * On close: window.scrollTo(0, previewOverlayScrollY).
+ * On reaching thanks block within the runner: `onComplete` closes the overlay
+ * so the designer sees the builder again with scroll preserved.
  */
 
 import { useEffect } from 'react';
@@ -20,6 +17,7 @@ import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useBuilderStore } from '@/lib/stores/builder';
 import { useUiStore } from '@/lib/stores/ui';
+import { RunnerShell } from '@/components/runner/RunnerShell';
 
 export function PreviewOverlay() {
   const open = useUiStore((s) => s.previewOverlayOpen);
@@ -73,32 +71,13 @@ export function PreviewOverlay() {
         </Button>
       </div>
 
-      <div className="flex flex-1 items-center justify-center px-6 py-12">
-        <RunnerShellStub blocks={blocks} />
+      <div className="relative flex-1 overflow-y-auto">
+        <RunnerShell
+          mode="preview"
+          blocks={blocks}
+          onComplete={() => setOpen(false)}
+        />
       </div>
-    </div>
-  );
-}
-
-// ----------------------------------------------------------------------------
-// Stub: Plan 01-05 will replace this with the real <RunnerShell mode="preview">.
-// ----------------------------------------------------------------------------
-
-interface RunnerShellStubProps {
-  blocks: { id: string; type: string }[];
-}
-
-function RunnerShellStub({ blocks }: RunnerShellStubProps) {
-  return (
-    <div className="mx-auto max-w-[480px] rounded-lg border border-border bg-card p-8 shadow-sm">
-      <h2 className="mb-2 text-h2 font-semibold">Preview placeholder</h2>
-      <p className="mb-4 text-body text-muted-foreground">
-        [Preview will mount the runner here once Plan 01-05 ships RunnerShell]
-      </p>
-      <p className="text-small text-muted-foreground">
-        Current draft: {blocks.length} block{blocks.length === 1 ? '' : 's'} —{' '}
-        {blocks.map((b) => b.type).join(' → ')}
-      </p>
     </div>
   );
 }
