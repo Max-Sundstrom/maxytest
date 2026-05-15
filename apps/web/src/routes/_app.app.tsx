@@ -2,10 +2,16 @@ import { useEffect, useState } from 'react';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useCurrentWorkspace } from '@/lib/queries/workspaces';
-import { useCreateStudy, useStudies } from '@/lib/queries/studies';
+import {
+  useCreateStudy,
+  useStudies,
+  useStudiesArchived,
+} from '@/lib/queries/studies';
 import { EmptyTestsState } from '@/components/studies/EmptyTestsState';
 import { NewTestButton, StudyList } from '@/components/studies/StudyList';
+import { ArchivedTabPanel } from '@/components/studies/ArchivedTabPanel';
 
 // Route-tree-agnostic navigate type — see comment in lib/queries/auth.ts.
 type LooseNavigate = (opts: {
@@ -16,18 +22,21 @@ type LooseNavigate = (opts: {
 /**
  * `/app` — designer's test list.
  *
- * Behaviour:
- *   - Loading workspace → 3 skeleton cards (UI-SPEC.md §States Catalog).
- *   - Workspace loaded + 0 studies → <EmptyTestsState>.
- *   - Workspace loaded + N studies → "Tests" heading + <NewTestButton> + <StudyList>.
+ * Plan 01-03 surface: workspace-loading skeletons → EmptyTestsState OR
+ * StudyList with NewTestButton.
  *
- * Plan 01-04 will add the Archived tab and wire status mutations; this route
- * stops at the surface that Plan 01-03 needs.
+ * Plan 01-04 surface: when ANY test (active OR archived) exists, wrap the
+ * list in shadcn Tabs ["Tests", "Archived"]. The greenfield empty state
+ * (zero studies in BOTH lists) still shows <EmptyTestsState>.
  */
 function AppHomeRoute() {
-  const { workspace, isLoading: workspaceLoading, error: workspaceError } =
-    useCurrentWorkspace();
+  const {
+    workspace,
+    isLoading: workspaceLoading,
+    error: workspaceError,
+  } = useCurrentWorkspace();
   const studiesQuery = useStudies(workspace?.id);
+  const archivedQuery = useStudiesArchived(workspace?.id);
   const createStudy = useCreateStudy(workspace?.id);
   const navigate = useNavigate() as unknown as LooseNavigate;
 
@@ -85,8 +94,10 @@ function AppHomeRoute() {
     );
   }
 
-  // Show skeletons while we don't yet have a workspace OR the studies query
-  // is still resolving for the first time.
+  // Show skeletons while we don't yet have a workspace OR the active-studies
+  // query is still resolving for the first time. We don't block on the
+  // archived query — it can stream in independently because the Archived
+  // tab is not the default view.
   if (workspaceLoading || !workspace || studiesQuery.isLoading) {
     return (
       <main className="mx-auto max-w-3xl px-6 py-12">
@@ -101,8 +112,11 @@ function AppHomeRoute() {
   }
 
   const studies = studiesQuery.studies;
+  const archivedStudies = archivedQuery.studies;
+  const hasAnyStudies = studies.length > 0 || archivedStudies.length > 0;
 
-  if (studies.length === 0) {
+  // Greenfield UX: no active AND no archived → onboarding empty state.
+  if (!hasAnyStudies) {
     return (
       <main className="mx-auto max-w-3xl px-6 py-12">
         <EmptyTestsState
@@ -121,7 +135,30 @@ function AppHomeRoute() {
         </h1>
         <NewTestButton onClick={handleCreate} isPending={createStudy.isPending} />
       </div>
-      <StudyList studies={studies} />
+
+      <Tabs defaultValue="active">
+        <TabsList>
+          <TabsTrigger value="active">Tests</TabsTrigger>
+          <TabsTrigger value="archived">
+            Archived
+            {archivedStudies.length > 0 && ` (${archivedStudies.length})`}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="active" className="mt-4">
+          {studies.length === 0 ? (
+            <p className="py-12 text-center text-body text-muted-foreground">
+              No active tests. All your tests are archived.
+            </p>
+          ) : (
+            <StudyList studies={studies} workspaceId={workspace.id} />
+          )}
+        </TabsContent>
+
+        <TabsContent value="archived" className="mt-4">
+          <ArchivedTabPanel workspaceId={workspace.id} />
+        </TabsContent>
+      </Tabs>
     </main>
   );
 }
