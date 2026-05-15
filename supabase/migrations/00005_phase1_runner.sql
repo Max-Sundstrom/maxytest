@@ -111,10 +111,7 @@ END
 $$;
 
 COMMENT ON FUNCTION public.create_session(text, text, text) IS
-  'Plan 01-05 Task 1 / D-20. Creates a sessions row for an anonymous respondent. ' ||
-  'Raises invalid_run_token if the token does not match any study; ' ||
-  'raises not_accepting_responses if the study is not currently published; ' ||
-  'raises not_authenticated if auth.uid() is null (signInAnonymously not called).';
+  'Plan 01-05 Task 1 / D-20. Creates a sessions row for an anonymous respondent. Raises invalid_run_token if the token does not match any study; raises not_accepting_responses if the study is not currently published; raises not_authenticated if auth.uid() is null (signInAnonymously not called).';
 
 
 -- -----------------------------------------------------------------------------
@@ -177,9 +174,7 @@ END
 $$;
 
 COMMENT ON FUNCTION public.submit_response(uuid, uuid, jsonb, int) IS
-  'Plan 01-05 Task 1. UPSERTs a row into public.responses, gated on ' ||
-  'sessions.respondent_id = auth.uid() AND sessions.status = ''in_progress''. ' ||
-  'Raises forbidden / session_closed / session_not_found / not_authenticated.';
+  'Plan 01-05 Task 1. UPSERTs a row into public.responses, gated on sessions.respondent_id = auth.uid() AND sessions.status = ''in_progress''. Raises forbidden / session_closed / session_not_found / not_authenticated.';
 
 
 -- -----------------------------------------------------------------------------
@@ -213,8 +208,7 @@ END
 $$;
 
 COMMENT ON FUNCTION public.complete_session(uuid) IS
-  'Plan 01-05 Task 1. Transitions a session to status=completed when the ' ||
-  'respondent reaches the thanks block. Owner-checked and idempotent.';
+  'Plan 01-05 Task 1. Transitions a session to status=completed when the respondent reaches the thanks block. Owner-checked and idempotent.';
 
 
 -- -----------------------------------------------------------------------------

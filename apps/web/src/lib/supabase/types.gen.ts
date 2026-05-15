@@ -366,6 +366,15 @@ export type Database = {
     }
     Functions: {
       archive_study: { Args: { study_uuid: string }; Returns: undefined }
+      complete_session: { Args: { p_session_id: string }; Returns: undefined }
+      create_session: {
+        Args: {
+          p_device_type: string
+          p_run_token: string
+          p_user_agent: string
+        }
+        Returns: string
+      }
       create_study: {
         Args: { study_title?: string; ws_id: string }
         Returns: string
@@ -460,6 +469,15 @@ export type Database = {
         Returns: undefined
       }
       restore_study: { Args: { study_uuid: string }; Returns: undefined }
+      submit_response: {
+        Args: {
+          p_answer: Json
+          p_block_id: string
+          p_session_id: string
+          p_time_ms: number
+        }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never
