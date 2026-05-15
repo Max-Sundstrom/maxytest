@@ -63,14 +63,10 @@ export function BlockSidebarRow(props: BlockSidebarRowProps) {
   const entry = BLOCK_REGISTRY[block.type];
   const Icon = entry.icon;
 
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: block.id, disabled: block.pinned });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: block.id,
+    disabled: block.pinned,
+  });
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -103,9 +99,7 @@ export function BlockSidebarRow(props: BlockSidebarRowProps) {
               <Pin aria-hidden="true" className="size-3.5" />
             </span>
           </TooltipTrigger>
-          <TooltipContent side="right">
-            This block can&rsquo;t be moved or deleted
-          </TooltipContent>
+          <TooltipContent side="right">This block can&rsquo;t be moved or deleted</TooltipContent>
         </Tooltip>
       ) : (
         <button
@@ -176,11 +170,7 @@ export function BlockSidebarRow(props: BlockSidebarRowProps) {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => setConfirmOpen(false)}
-            >
+            <Button type="button" variant="ghost" onClick={() => setConfirmOpen(false)}>
               Cancel
             </Button>
             <Button

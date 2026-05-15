@@ -35,26 +35,17 @@ export function ConflictResolutionBanner({
   return (
     <div className="rounded-md border border-warning/30 bg-warning-bg p-4">
       <div className="flex items-start gap-3">
-        <AlertTriangle
-          aria-hidden="true"
-          className="mt-0.5 size-5 text-warning"
-        />
+        <AlertTriangle aria-hidden="true" className="mt-0.5 size-5 text-warning" />
         <div className="flex-1">
           <p className="text-body font-medium text-foreground">
             This block was edited in another window.
           </p>
-          <p className="mt-1 text-small text-muted-foreground">
-            Choose which version to keep.
-          </p>
+          <p className="mt-1 text-small text-muted-foreground">Choose which version to keep.</p>
           <div className="mt-3 flex flex-wrap gap-2">
             <Button size="sm" variant="ghost" onClick={onUseServer}>
               Use server version
             </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setConfirmOpen(true)}
-            >
+            <Button size="sm" variant="ghost" onClick={() => setConfirmOpen(true)}>
               Use my version
             </Button>
           </div>
@@ -66,16 +57,11 @@ export function ConflictResolutionBanner({
           <DialogHeader>
             <DialogTitle>Overwrite the changes made elsewhere?</DialogTitle>
             <DialogDescription>
-              Your version will replace whatever was saved from the other
-              window.
+              Your version will replace whatever was saved from the other window.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => setConfirmOpen(false)}
-            >
+            <Button type="button" variant="ghost" onClick={() => setConfirmOpen(false)}>
               Cancel
             </Button>
             <Button

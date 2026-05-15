@@ -126,18 +126,14 @@ export const useRunnerStore = create<RunnerState>()(
         // don't drop drafts the respondent typed offline before a network
         // round-trip. Server answers take precedence (they're authoritative).
         const mergedAnswers =
-          prevToken === runToken
-            ? { ...get().answers, ...seededAnswers }
-            : seededAnswers;
+          prevToken === runToken ? { ...get().answers, ...seededAnswers } : seededAnswers;
 
         // Resume jump target: the count of answered blocks is the index of
         // the next unanswered block. Clamp to [1, blocks.length - 1] so the
         // welcome CTA never jumps to itself or past the thanks block.
         const answeredCount = existingAnswers.length;
         const resumeTarget =
-          answeredCount > 0
-            ? Math.min(blocks.length - 1, Math.max(1, answeredCount + 1))
-            : null;
+          answeredCount > 0 ? Math.min(blocks.length - 1, Math.max(1, answeredCount + 1)) : null;
 
         set({
           currentRunToken: runToken,

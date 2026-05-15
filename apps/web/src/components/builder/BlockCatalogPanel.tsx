@@ -14,23 +14,10 @@
  */
 
 import { toast } from 'sonner';
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
-import {
-  BLOCK_CATEGORIES,
-  BLOCK_REGISTRY,
-  type BlockCategory,
-} from '@/lib/blocks/registry';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { BLOCK_CATEGORIES, BLOCK_REGISTRY, type BlockCategory } from '@/lib/blocks/registry';
 import type { BlockType } from '@/lib/blocks/types';
 import { OPEN_QUESTION_DEFAULT } from '@/lib/blocks/defaults';
 import { useAddBlock } from '@/lib/queries/blocks';
@@ -53,10 +40,7 @@ export interface BlockCatalogPanelProps {
   workspaceId: string;
 }
 
-export function BlockCatalogPanel({
-  studyId,
-  workspaceId,
-}: BlockCatalogPanelProps) {
+export function BlockCatalogPanel({ studyId, workspaceId }: BlockCatalogPanelProps) {
   const open = useUiStore((s) => s.catalogPanelOpen);
   const setOpen = useUiStore((s) => s.setCatalogPanelOpen);
   const blocks = useBuilderStore((s) => s.blocks);
@@ -80,8 +64,7 @@ export function BlockCatalogPanel({
           setOpen(false);
         },
         onError: (err: unknown) => {
-          const message =
-            err instanceof Error ? err.message : 'Try again in a moment.';
+          const message = err instanceof Error ? err.message : 'Try again in a moment.';
           toast.error("Couldn't add the block", { description: message });
         },
       },
@@ -108,10 +91,7 @@ export function BlockCatalogPanel({
                 .filter((type) => BLOCK_REGISTRY[type].category === category.id);
               if (rows.length === 0) return null;
               return (
-                <section
-                  key={category.id}
-                  aria-labelledby={`catalog-${category.id}`}
-                >
+                <section key={category.id} aria-labelledby={`catalog-${category.id}`}>
                   <h3
                     id={`catalog-${category.id}`}
                     className="mb-2 text-caption font-medium uppercase tracking-wide text-muted-foreground"
@@ -124,10 +104,7 @@ export function BlockCatalogPanel({
                         key={type}
                         type={type}
                         onAdd={handleAdd}
-                        isPending={
-                          addMutation.isPending &&
-                          type === 'open_question'
-                        }
+                        isPending={addMutation.isPending && type === 'open_question'}
                       />
                     ))}
                   </ul>
@@ -159,9 +136,7 @@ function CatalogRow({ type, onAdd, isPending }: CatalogRowProps) {
       onClick={() => onAdd(type)}
       className={cn(
         'flex min-h-touch w-full items-start gap-3 rounded-md p-3 text-left transition-colors duration-100',
-        enabled
-          ? 'hover:bg-slate-100 focus-visible:bg-slate-100'
-          : 'cursor-not-allowed opacity-50',
+        enabled ? 'hover:bg-slate-100 focus-visible:bg-slate-100' : 'cursor-not-allowed opacity-50',
       )}
       aria-disabled={!enabled}
     >
@@ -169,11 +144,7 @@ function CatalogRow({ type, onAdd, isPending }: CatalogRowProps) {
       <div className="flex-1">
         <div className="text-body font-medium text-foreground">
           {entry.label}
-          {isPending && (
-            <span className="ml-2 text-caption text-muted-foreground">
-              Adding…
-            </span>
-          )}
+          {isPending && <span className="ml-2 text-caption text-muted-foreground">Adding…</span>}
         </div>
         <div className="text-small text-muted-foreground">{entry.description}</div>
       </div>

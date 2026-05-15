@@ -45,10 +45,10 @@ Deno.serve(async () => {
     console.error(
       'hard_delete_archived_studies: missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in environment',
     );
-    return new Response(
-      JSON.stringify({ error: 'configuration_missing' }),
-      { status: 500, headers: { 'content-type': 'application/json' } },
-    );
+    return new Response(JSON.stringify({ error: 'configuration_missing' }), {
+      status: 500,
+      headers: { 'content-type': 'application/json' },
+    });
   }
 
   const supabase = createClient(supabaseUrl, serviceRoleKey, {
@@ -59,19 +59,17 @@ Deno.serve(async () => {
 
   if (error) {
     console.error('hard_delete_archived_studies failed:', error);
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { 'content-type': 'application/json' } },
-    );
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { 'content-type': 'application/json' },
+    });
   }
 
   const deletedCount = typeof data === 'number' ? data : 0;
-  console.log(
-    `hard_delete_archived_studies removed ${deletedCount} studies`,
-  );
+  console.log(`hard_delete_archived_studies removed ${deletedCount} studies`);
 
-  return new Response(
-    JSON.stringify({ deleted_count: deletedCount }),
-    { status: 200, headers: { 'content-type': 'application/json' } },
-  );
+  return new Response(JSON.stringify({ deleted_count: deletedCount }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  });
 });

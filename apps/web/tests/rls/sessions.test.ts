@@ -137,7 +137,7 @@ describe.skipIf(!rlsCredentialsAvailable)('RLS / sessions', () => {
     // Use a SECOND token-equivalent flow: call create_session for the
     // existing published study. The RPC inserts under respondent_id =
     // auth.uid() and returns the new session id.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const { data, error } = await (client as any).rpc('create_session', {
       p_run_token: runToken,
       p_device_type: 'mobile',
@@ -158,10 +158,7 @@ describe.skipIf(!rlsCredentialsAvailable)('RLS / sessions', () => {
 
   it("anonymous user A cannot SELECT another anon user's session row", async () => {
     const client = userClient(anonA.jwt);
-    const { data, error } = await client
-      .from('sessions')
-      .select('id')
-      .eq('id', sessionBId);
+    const { data, error } = await client.from('sessions').select('id').eq('id', sessionBId);
     expect(error).toBeNull();
     // sessions_designer_read requires workspace membership; sessions_anon_*
     // policies only grant INSERT + UPDATE — there is no SELECT policy for

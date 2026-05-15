@@ -106,10 +106,9 @@ function RunnerShellInner({
         runToken: effectiveRunToken,
         sessionId: sessionId ?? null,
         blocks,
-        existingAnswers: mode === 'live' ? existingAnswers ?? [] : [],
+        existingAnswers: mode === 'live' ? (existingAnswers ?? []) : [],
       });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectiveRunToken, mode, blocks.length]);
 
   const total = blocks.length;
@@ -133,7 +132,6 @@ function RunnerShellInner({
     if (currentBlock) {
       startBlockTimer(currentBlock.id);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentBlock?.id]);
 
   // Mutations (only used in live mode — but we always call the hooks so
@@ -192,9 +190,7 @@ function RunnerShellInner({
     // thanks at minimum). Render a friendly fallback rather than crashing.
     return (
       <div className="flex flex-1 items-center justify-center px-4 py-8 text-center">
-        <p className="text-body text-muted-foreground">
-          This test has no blocks yet.
-        </p>
+        <p className="text-body text-muted-foreground">This test has no blocks yet.</p>
       </div>
     );
   }
@@ -205,10 +201,7 @@ function RunnerShellInner({
       <div className="flex flex-1 flex-col">
         <div className="mx-auto flex w-full max-w-[640px] flex-1 flex-col px-4 pb-4 pt-8 sm:px-6">
           {currentBlock.type === 'welcome' && (
-            <WelcomeRunner
-              block={currentBlock}
-              onStart={handleWelcomeStart}
-            />
+            <WelcomeRunner block={currentBlock} onStart={handleWelcomeStart} />
           )}
           {currentBlock.type === 'open_question' && (
             <OpenQuestionRunner
@@ -216,17 +209,12 @@ function RunnerShellInner({
               isLast={isLastQuestion}
               onSubmit={handleQuestionSubmit}
               initialValue={
-                (answers[currentBlock.id]?.content as
-                  | { text?: string }
-                  | undefined)?.text ?? ''
+                (answers[currentBlock.id]?.content as { text?: string } | undefined)?.text ?? ''
               }
             />
           )}
           {currentBlock.type === 'thanks' && (
-            <ThanksRunner
-              block={currentBlock}
-              onMounted={handleThanksRendered}
-            />
+            <ThanksRunner block={currentBlock} onMounted={handleThanksRendered} />
           )}
         </div>
       </div>

@@ -69,11 +69,7 @@ export function CallbackHandler({ next }: CallbackHandlerProps) {
     return (
       <div className="mx-auto flex min-h-[100dvh] max-w-[400px] flex-col items-center justify-center px-4 text-center">
         <h1 className="mb-6 text-h1 font-semibold tracking-tight">{heading}</h1>
-        <Button
-          variant="default"
-          size="lg"
-          onClick={() => navigate({ to: '/auth/login' })}
-        >
+        <Button variant="default" size="lg" onClick={() => navigate({ to: '/auth/login' })}>
           Back to sign in
         </Button>
       </div>
@@ -82,10 +78,7 @@ export function CallbackHandler({ next }: CallbackHandlerProps) {
 
   return (
     <div className="mx-auto flex min-h-[100dvh] max-w-[400px] flex-col items-center justify-center px-4 text-center">
-      <Loader2
-        className="mb-4 size-8 animate-spin text-muted-foreground"
-        aria-hidden
-      />
+      <Loader2 className="mb-4 size-8 animate-spin text-muted-foreground" aria-hidden />
       <p className="text-body text-muted-foreground" role="status" aria-live="polite">
         Signing you in…
       </p>

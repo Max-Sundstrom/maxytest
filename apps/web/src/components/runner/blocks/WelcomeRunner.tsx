@@ -29,14 +29,8 @@ export function WelcomeRunner({ block, onStart }: WelcomeRunnerProps) {
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center text-center">
-      <h1 className="mb-4 text-h1 font-semibold text-foreground">
-        {content.title}
-      </h1>
-      {content.body && (
-        <p className="mb-8 text-body text-muted-foreground">
-          {content.body}
-        </p>
-      )}
+      <h1 className="mb-4 text-h1 font-semibold text-foreground">{content.title}</h1>
+      {content.body && <p className="mb-8 text-body text-muted-foreground">{content.body}</p>}
       <Button
         type="button"
         variant="default"

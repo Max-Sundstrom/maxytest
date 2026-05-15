@@ -31,11 +31,7 @@ export interface PublishLinkDialogProps {
   runToken: string | null;
 }
 
-export function PublishLinkDialog({
-  open,
-  onOpenChange,
-  runToken,
-}: PublishLinkDialogProps) {
+export function PublishLinkDialog({ open, onOpenChange, runToken }: PublishLinkDialogProps) {
   // Build the URL inside the render to pick up any origin shifts (e.g., the
   // dev server starting on a different port). Falling back to '' keeps the
   // input clean on SSR-style first paint (none in v1 but defensible).
@@ -59,9 +55,7 @@ export function PublishLinkDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Your test is live</DialogTitle>
-          <DialogDescription>
-            Share this link to start collecting responses:
-          </DialogDescription>
+          <DialogDescription>Share this link to start collecting responses:</DialogDescription>
         </DialogHeader>
 
         <div className="flex items-center gap-2">
@@ -72,22 +66,13 @@ export function PublishLinkDialog({
             onFocus={(e) => e.currentTarget.select()}
             className="font-mono text-small"
           />
-          <Button
-            type="button"
-            variant="default"
-            onClick={handleCopy}
-            disabled={!shareUrl}
-          >
+          <Button type="button" variant="default" onClick={handleCopy} disabled={!shareUrl}>
             Copy link
           </Button>
         </div>
 
         <DialogFooter>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-          >
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Done
           </Button>
         </DialogFooter>

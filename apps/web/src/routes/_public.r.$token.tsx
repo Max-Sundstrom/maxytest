@@ -52,9 +52,7 @@ function RunnerRoute() {
   // route head() entries into <head>. The route's `head` is the canonical
   // path; this client-side hook is belt-and-suspenders.
   useEffect(() => {
-    const existing = document.querySelector(
-      'meta[name="robots"][data-runner="1"]',
-    );
+    const existing = document.querySelector('meta[name="robots"][data-runner="1"]');
     if (existing) return;
     const meta = document.createElement('meta');
     meta.setAttribute('name', 'robots');
@@ -88,17 +86,11 @@ function RunnerRoute() {
       return (
         <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4 py-8">
           <div className="mx-auto flex max-w-md flex-col items-center text-center">
-            <h1 className="mb-2 text-h1 font-semibold">
-              We can&rsquo;t find this test.
-            </h1>
+            <h1 className="mb-2 text-h1 font-semibold">We can&rsquo;t find this test.</h1>
             <p className="mb-6 text-body text-muted-foreground">
-              Double-check the link, or ask the test creator for an updated
-              one.
+              Double-check the link, or ask the test creator for an updated one.
             </p>
-            <Link
-              to="/"
-              className="text-body text-accent underline-offset-4 hover:underline"
-            >
+            <Link to="/" className="text-body text-accent underline-offset-4 hover:underline">
               Go to homepage
             </Link>
           </div>
@@ -114,12 +106,8 @@ function RunnerRoute() {
     return (
       <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4 py-8">
         <div className="mx-auto flex max-w-md flex-col items-center text-center">
-          <h1 className="mb-2 text-h1 font-semibold">
-            Something went wrong.
-          </h1>
-          <p className="mb-6 text-body text-muted-foreground">
-            Try refreshing the page.
-          </p>
+          <h1 className="mb-2 text-h1 font-semibold">Something went wrong.</h1>
+          <p className="mb-6 text-body text-muted-foreground">Try refreshing the page.</p>
           <button
             type="button"
             className="rounded-md bg-accent px-4 py-2 text-accent-foreground hover:bg-accent-hover min-h-touch min-w-touch"

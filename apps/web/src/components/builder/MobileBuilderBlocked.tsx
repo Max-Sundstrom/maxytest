@@ -11,16 +11,12 @@ export function MobileBuilderBlocked() {
   return (
     <div className="flex min-h-[100dvh] items-center justify-center px-4">
       <div className="mx-auto max-w-md text-center">
-        <Monitor
-          aria-hidden="true"
-          className="mx-auto mb-6 size-12 text-muted-foreground"
-        />
+        <Monitor aria-hidden="true" className="mx-auto mb-6 size-12 text-muted-foreground" />
         <h1 className="mb-2 text-h1 font-semibold tracking-tight text-foreground">
           Open this on desktop to edit tests
         </h1>
         <p className="text-body text-muted-foreground">
-          The test builder needs more room. Mobile is for taking tests, not
-          building them.
+          The test builder needs more room. Mobile is for taking tests, not building them.
         </p>
       </div>
     </div>

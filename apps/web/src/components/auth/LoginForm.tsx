@@ -92,9 +92,7 @@ export function LoginForm() {
   return (
     <div className="mx-auto w-full max-w-[400px] py-16">
       <h1 className="mb-1 text-h2 font-semibold tracking-tight">Maxytest</h1>
-      <h2 className="mb-2 text-display font-semibold tracking-tight">
-        Sign in to Maxytest
-      </h2>
+      <h2 className="mb-2 text-display font-semibold tracking-tight">Sign in to Maxytest</h2>
       <p className="mb-8 text-body text-muted-foreground">
         We&rsquo;ll email you a magic link. No password.
       </p>

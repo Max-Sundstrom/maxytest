@@ -24,20 +24,11 @@ import type { Block } from '@/lib/blocks/types';
 export interface ThanksEditorProps {
   block: Block;
   disabled?: boolean;
-  onSave: (input: {
-    content: ThanksContent;
-    version: number;
-    idempotencyKey: string;
-  }) => void;
+  onSave: (input: { content: ThanksContent; version: number; idempotencyKey: string }) => void;
   serverVersion: number;
 }
 
-export function ThanksEditor({
-  block,
-  disabled,
-  onSave,
-  serverVersion,
-}: ThanksEditorProps) {
+export function ThanksEditor({ block, disabled, onSave, serverVersion }: ThanksEditorProps) {
   const updateLocal = useBuilderStore((s) => s.updateBlockContent);
   const form = useForm<ThanksContent>({
     resolver: zodResolver(thanksContentSchema),
@@ -50,7 +41,6 @@ export function ThanksEditor({
     if (JSON.stringify(form.getValues()) !== JSON.stringify(next)) {
       form.reset(next);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [block.id, block.version, block.content]);
 
   const watched = form.watch();
@@ -69,7 +59,6 @@ export function ThanksEditor({
     });
     lastSavedRef.current = serialised;
     updateLocal(block.id, debounced);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debounced, disabled, serverVersion]);
 
   return (
@@ -82,11 +71,7 @@ export function ThanksEditor({
             <FormItem>
               <FormLabel>Title</FormLabel>
               <FormControl>
-                <Input
-                  {...field}
-                  disabled={disabled}
-                  placeholder="Thank you!"
-                />
+                <Input {...field} disabled={disabled} placeholder="Thank you!" />
               </FormControl>
               <FormMessage />
             </FormItem>

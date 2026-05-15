@@ -127,19 +127,12 @@ describe.skipIf(!rlsCredentialsAvailable)('RLS / studies', () => {
     expect(data?.id).toBe(userAStudyId);
 
     // Clean up — remove the editor membership before subsequent tests.
-    await admin
-      .from('memberships')
-      .delete()
-      .eq('workspace_id', workspaceA)
-      .eq('user_id', userB.id);
+    await admin.from('memberships').delete().eq('workspace_id', workspaceA).eq('user_id', userB.id);
   });
 
   it('anon cannot SELECT non-published studies', async () => {
     const client = anonClient();
-    const { data, error } = await client
-      .from('studies')
-      .select('id')
-      .eq('id', userAStudyId);
+    const { data, error } = await client.from('studies').select('id').eq('id', userAStudyId);
     expect(error).toBeNull();
     // Draft studies are NOT covered by studies_runtoken_read.
     expect(data ?? []).toHaveLength(0);
@@ -159,10 +152,7 @@ describe.skipIf(!rlsCredentialsAvailable)('RLS / studies', () => {
 
   it("user A cannot SELECT user B's drafts", async () => {
     const client = userClient(userA.jwt);
-    const { data, error } = await client
-      .from('studies')
-      .select('id')
-      .eq('id', userBStudyId);
+    const { data, error } = await client.from('studies').select('id').eq('id', userBStudyId);
     expect(error).toBeNull();
     expect(data ?? []).toHaveLength(0);
   });

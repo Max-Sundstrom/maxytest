@@ -1,0 +1,6 @@
+#!/usr/bin/env sh
+# Plan 01-06 Task 1 — keep staged files clean before they hit the index.
+# `pnpm exec lint-staged` picks up the `lint-staged` block in the root
+# package.json. It runs ESLint --fix + prettier --write on the staged set,
+# then re-stages the fixed files. Anything still failing aborts the commit.
+pnpm exec lint-staged

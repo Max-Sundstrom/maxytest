@@ -4,20 +4,13 @@ import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useCurrentWorkspace } from '@/lib/queries/workspaces';
-import {
-  useCreateStudy,
-  useStudies,
-  useStudiesArchived,
-} from '@/lib/queries/studies';
+import { useCreateStudy, useStudies, useStudiesArchived } from '@/lib/queries/studies';
 import { EmptyTestsState } from '@/components/studies/EmptyTestsState';
 import { NewTestButton, StudyList } from '@/components/studies/StudyList';
 import { ArchivedTabPanel } from '@/components/studies/ArchivedTabPanel';
 
 // Route-tree-agnostic navigate type — see comment in lib/queries/auth.ts.
-type LooseNavigate = (opts: {
-  to: string;
-  params?: Record<string, string>;
-}) => unknown;
+type LooseNavigate = (opts: { to: string; params?: Record<string, string> }) => unknown;
 
 /**
  * `/app` — designer's test list.
@@ -30,11 +23,7 @@ type LooseNavigate = (opts: {
  * (zero studies in BOTH lists) still shows <EmptyTestsState>.
  */
 function AppHomeRoute() {
-  const {
-    workspace,
-    isLoading: workspaceLoading,
-    error: workspaceError,
-  } = useCurrentWorkspace();
+  const { workspace, isLoading: workspaceLoading, error: workspaceError } = useCurrentWorkspace();
   const studiesQuery = useStudies(workspace?.id);
   const archivedQuery = useStudiesArchived(workspace?.id);
   const createStudy = useCreateStudy(workspace?.id);
@@ -62,8 +51,7 @@ function AppHomeRoute() {
           });
         },
         onError: (err: unknown) => {
-          const message =
-            err instanceof Error ? err.message : 'Try again in a moment.';
+          const message = err instanceof Error ? err.message : 'Try again in a moment.';
           toast.error("Couldn't create the test", { description: message });
         },
       },
@@ -84,9 +72,7 @@ function AppHomeRoute() {
   if (triggerFailed && !workspace) {
     return (
       <div className="mx-auto max-w-md p-8 text-center">
-        <h1 className="mb-2 text-h1 font-semibold">
-          Workspace setup failed — contact support.
-        </h1>
+        <h1 className="mb-2 text-h1 font-semibold">Workspace setup failed — contact support.</h1>
         <p className="text-body text-muted-foreground">
           The auto-create step that runs on first sign-in did not complete.
         </p>
@@ -119,10 +105,7 @@ function AppHomeRoute() {
   if (!hasAnyStudies) {
     return (
       <main className="mx-auto max-w-3xl px-6 py-12">
-        <EmptyTestsState
-          onCreate={handleCreate}
-          isPending={createStudy.isPending}
-        />
+        <EmptyTestsState onCreate={handleCreate} isPending={createStudy.isPending} />
       </main>
     );
   }
@@ -130,9 +113,7 @@ function AppHomeRoute() {
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-h1 font-semibold tracking-tight text-foreground">
-          Tests
-        </h1>
+        <h1 className="text-h1 font-semibold tracking-tight text-foreground">Tests</h1>
         <NewTestButton onClick={handleCreate} isPending={createStudy.isPending} />
       </div>
 

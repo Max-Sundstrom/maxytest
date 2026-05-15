@@ -38,7 +38,7 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, AppErrorBounda
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     // Phase 1: console only. Sentry / structured logging lands later.
-    // eslint-disable-next-line no-console
+
     console.error('AppErrorBoundary caught:', error, info);
   }
 

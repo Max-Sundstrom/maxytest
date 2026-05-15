@@ -33,8 +33,8 @@ describe.skipIf(!rlsCredentialsAvailable)('RLS / blocks', () => {
 
   // Block ids seeded via admin so we can address them in every test.
   let welcomeBlockA: string; // pinned welcome on userA's published study
-  let openBlockA: string;    // non-pinned open_question on userA's published study
-  let openBlockB: string;    // non-pinned open_question on userB's draft
+  let openBlockA: string; // non-pinned open_question on userA's published study
+  let openBlockB: string; // non-pinned open_question on userB's draft
 
   beforeAll(async () => {
     userA = await createTestUser(uniqueTestEmail('blkA'));
@@ -152,18 +152,12 @@ describe.skipIf(!rlsCredentialsAvailable)('RLS / blocks', () => {
       .select();
     expect(error).toBeNull();
     expect(data ?? []).toHaveLength(1);
-    expect(
-      (data?.[0]?.content as { question?: string })?.question,
-    ).toBe('Updated by owner');
+    expect((data?.[0]?.content as { question?: string })?.question).toBe('Updated by owner');
   });
 
   it('owner cannot DELETE pinned blocks (silent RLS filter; rowCount = 0)', async () => {
     const client = userClient(userA.jwt);
-    const { data, error } = await client
-      .from('blocks')
-      .delete()
-      .eq('id', welcomeBlockA)
-      .select();
+    const { data, error } = await client.from('blocks').delete().eq('id', welcomeBlockA).select();
     expect(error).toBeNull();
     expect(data ?? []).toHaveLength(0);
 
@@ -194,11 +188,7 @@ describe.skipIf(!rlsCredentialsAvailable)('RLS / blocks', () => {
     const blockId = toDelete!.id;
 
     const client = userClient(userA.jwt);
-    const { data, error } = await client
-      .from('blocks')
-      .delete()
-      .eq('id', blockId)
-      .select();
+    const { data, error } = await client.from('blocks').delete().eq('id', blockId).select();
     expect(error).toBeNull();
     expect(data ?? []).toHaveLength(1);
     expect(data?.[0]?.id).toBe(blockId);
@@ -223,9 +213,7 @@ describe.skipIf(!rlsCredentialsAvailable)('RLS / blocks', () => {
       .select('content')
       .eq('id', openBlockB)
       .maybeSingle();
-    expect(
-      (row?.content as { question?: string })?.question,
-    ).toBe('Cross?');
+    expect((row?.content as { question?: string })?.question).toBe('Cross?');
   });
 
   it('anon CAN SELECT blocks of a published study (via blocks_read OR-clause)', async () => {

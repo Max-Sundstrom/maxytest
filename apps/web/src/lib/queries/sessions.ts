@@ -39,10 +39,7 @@ type BlockRow = Database['public']['Tables']['blocks']['Row'];
 type ResponseRow = Database['public']['Tables']['responses']['Row'];
 
 /** Stable error codes the runner route branches on. */
-export type RunnerErrorCode =
-  | 'invalid_run_token'
-  | 'not_accepting_responses'
-  | 'unknown';
+export type RunnerErrorCode = 'invalid_run_token' | 'not_accepting_responses' | 'unknown';
 
 export class RunnerError extends Error {
   readonly code: RunnerErrorCode;
@@ -88,9 +85,7 @@ function rowToBlock(row: BlockRow): Block {
 /** Detect mobile vs desktop for the session row's `device_type` column. */
 function detectDeviceType(): 'mobile' | 'desktop' {
   if (typeof window === 'undefined' || !window.matchMedia) return 'desktop';
-  return window.matchMedia('(max-width: 1023px)').matches
-    ? 'mobile'
-    : 'desktop';
+  return window.matchMedia('(max-width: 1023px)').matches ? 'mobile' : 'desktop';
 }
 
 /**
@@ -284,10 +279,12 @@ export function useRunnerSession(runToken: string | null | undefined) {
         // session, which is fine. A real error blocks the runner though.
         throw new RunnerError('unknown', responsesErr.message);
       }
-      const existingAnswers = (responsesData ?? []).map((r: Pick<ResponseRow, 'block_id' | 'answer'>) => ({
-        blockId: r.block_id,
-        content: r.answer as unknown,
-      }));
+      const existingAnswers = (responsesData ?? []).map(
+        (r: Pick<ResponseRow, 'block_id' | 'answer'>) => ({
+          blockId: r.block_id,
+          content: r.answer as unknown,
+        }),
+      );
 
       return {
         session: sessionData,

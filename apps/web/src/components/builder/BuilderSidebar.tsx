@@ -22,10 +22,7 @@ import {
   useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core';
-import {
-  restrictToParentElement,
-  restrictToVerticalAxis,
-} from '@dnd-kit/modifiers';
+import { restrictToParentElement, restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import {
   SortableContext,
   arrayMove,
@@ -35,11 +32,7 @@ import {
 import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { BLOCK_REGISTRY } from '@/lib/blocks/registry';
-import {
-  useDeleteBlock,
-  useDuplicateBlock,
-  useReorderBlocks,
-} from '@/lib/queries/blocks';
+import { useDeleteBlock, useDuplicateBlock, useReorderBlocks } from '@/lib/queries/blocks';
 import { useBuilderStore } from '@/lib/stores/builder';
 import { useUiStore } from '@/lib/stores/ui';
 import { BlockSidebarRow } from './BlockSidebarRow';
@@ -83,18 +76,12 @@ export function BuilderSidebar({ studyId, workspaceId }: BuilderSidebarProps) {
 
     // Compute the new full ordering: pinned welcome stays at 0, unpinned
     // blocks reorder in their subset, pinned thanks stays at last position.
-    const newUnpinnedIds = arrayMove(
-      unpinnedIds,
-      fromUnpinnedIndex,
-      toUnpinnedIndex,
-    );
+    const newUnpinnedIds = arrayMove(unpinnedIds, fromUnpinnedIndex, toUnpinnedIndex);
 
     // Local store reorder (synchronous; powers the UI immediately + zundo history).
     // Translate the unpinned indices back to full-list indices.
     const oldFullIndex = blocks.findIndex((b) => b.id === active.id);
-    const newFullIndex = blocks.findIndex(
-      (b) => b.id === newUnpinnedIds[toUnpinnedIndex],
-    );
+    const newFullIndex = blocks.findIndex((b) => b.id === newUnpinnedIds[toUnpinnedIndex]);
     if (oldFullIndex >= 0 && newFullIndex >= 0) {
       reorderBlocksLocal(oldFullIndex, newFullIndex);
     }
@@ -156,7 +143,7 @@ export function BuilderSidebar({ studyId, workspaceId }: BuilderSidebarProps) {
           {/* Pinned welcome (top, non-sortable) */}
           {blocks
             .filter((b) => b.pinned && b.type === 'welcome')
-            .map((b, i) => (
+            .map((b) => (
               <BlockSidebarRow
                 key={b.id}
                 block={b}
@@ -172,10 +159,7 @@ export function BuilderSidebar({ studyId, workspaceId }: BuilderSidebarProps) {
               />
             ))}
 
-          <SortableContext
-            items={unpinnedIds}
-            strategy={verticalListSortingStrategy}
-          >
+          <SortableContext items={unpinnedIds} strategy={verticalListSortingStrategy}>
             {unpinned.map((b) => {
               const fullIdx = blocks.findIndex((x) => x.id === b.id);
               const subIdx = unpinnedIds.indexOf(b.id);
@@ -189,12 +173,8 @@ export function BuilderSidebar({ studyId, workspaceId }: BuilderSidebarProps) {
                   canMoveDown={subIdx < unpinnedIds.length - 1}
                   onMoveUp={() => handleMoveUp(b.id)}
                   onMoveDown={() => handleMoveDown(b.id)}
-                  onDuplicate={() =>
-                    duplicateMutation.mutate({ blockId: b.id })
-                  }
-                  onDelete={() =>
-                    deleteMutation.mutate({ blockId: b.id })
-                  }
+                  onDuplicate={() => duplicateMutation.mutate({ blockId: b.id })}
+                  onDelete={() => deleteMutation.mutate({ blockId: b.id })}
                   onSelect={() => setSelectedBlockId(b.id)}
                 />
               );

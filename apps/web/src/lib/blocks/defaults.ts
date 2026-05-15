@@ -8,11 +8,7 @@
  * designer picks "Open question".
  */
 
-import type {
-  OpenQuestionContent,
-  ThanksContent,
-  WelcomeContent,
-} from './schemas';
+import type { OpenQuestionContent, ThanksContent, WelcomeContent } from './schemas';
 
 export const WELCOME_DEFAULT: WelcomeContent = {
   type: 'welcome',

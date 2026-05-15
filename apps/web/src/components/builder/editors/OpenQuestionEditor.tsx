@@ -18,10 +18,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useDebouncedValue } from '@/lib/utils';
-import {
-  openQuestionContentSchema,
-  type OpenQuestionContent,
-} from '@/lib/blocks/schemas';
+import { openQuestionContentSchema, type OpenQuestionContent } from '@/lib/blocks/schemas';
 import { useBuilderStore } from '@/lib/stores/builder';
 import type { Block } from '@/lib/blocks/types';
 
@@ -54,7 +51,6 @@ export function OpenQuestionEditor({
     if (JSON.stringify(form.getValues()) !== JSON.stringify(next)) {
       form.reset(next);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [block.id, block.version, block.content]);
 
   const watched = form.watch();
@@ -73,7 +69,6 @@ export function OpenQuestionEditor({
     });
     lastSavedRef.current = serialised;
     updateLocal(block.id, debounced);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debounced, disabled, serverVersion]);
 
   return (
@@ -131,11 +126,7 @@ export function OpenQuestionEditor({
                     min={0}
                     value={field.value ?? ''}
                     onChange={(e) =>
-                      field.onChange(
-                        e.target.value === ''
-                          ? undefined
-                          : Number(e.target.value),
-                      )
+                      field.onChange(e.target.value === '' ? undefined : Number(e.target.value))
                     }
                     disabled={disabled}
                   />
@@ -157,11 +148,7 @@ export function OpenQuestionEditor({
                     max={5000}
                     value={field.value ?? ''}
                     onChange={(e) =>
-                      field.onChange(
-                        e.target.value === ''
-                          ? undefined
-                          : Number(e.target.value),
-                      )
+                      field.onChange(e.target.value === '' ? undefined : Number(e.target.value))
                     }
                     disabled={disabled}
                   />

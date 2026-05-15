@@ -17,12 +17,7 @@
  * broadcast shape.
  */
 
-import {
-  useMutation,
-  useMutationState,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query';
+import { useMutation, useMutationState, useQuery, useQueryClient } from '@tanstack/react-query';
 import { uuidv7 } from 'uuidv7';
 import { supabase } from '@/lib/supabase/auth';
 import { getBlockSavesChannel } from '@/lib/broadcast/block-saves';
@@ -104,10 +99,7 @@ export interface UpdateBlockInput {
   idempotencyKey?: string;
 }
 
-export function useUpdateBlock(
-  studyId: string,
-  workspaceId: string,
-) {
+export function useUpdateBlock(studyId: string, workspaceId: string) {
   const qc = useQueryClient();
 
   return useMutation({
@@ -120,14 +112,12 @@ export function useUpdateBlock(
       //    constraint and PostgREST returns 23505 — which we treat as
       //    "already applied" and continue to the UPDATE path so the caller
       //    still gets the row back.
-      const { error: auditError } = await supabase
-        .from('block_changes')
-        .insert({
-          block_id: input.blockId,
-          idempotency_key: idempotencyKey,
-          change_type: 'content_edit',
-          payload: { content: input.content as unknown as Json },
-        });
+      const { error: auditError } = await supabase.from('block_changes').insert({
+        block_id: input.blockId,
+        idempotency_key: idempotencyKey,
+        change_type: 'content_edit',
+        payload: { content: input.content as unknown as Json },
+      });
       if (auditError && auditError.code !== '23505') throw auditError;
 
       // 2. Conditional UPDATE — `.eq('version', input.version)` is the load-
@@ -151,11 +141,7 @@ export function useUpdateBlock(
       await qc.cancelQueries({ queryKey: ['blocks', studyId] });
       const prev = qc.getQueryData<Block[]>(['blocks', studyId]);
       qc.setQueryData<Block[]>(['blocks', studyId], (old) =>
-        (old ?? []).map((b) =>
-          b.id === input.blockId
-            ? { ...b, content: input.content }
-            : b,
-        ),
+        (old ?? []).map((b) => (b.id === input.blockId ? { ...b, content: input.content } : b)),
       );
       return { prev };
     },
@@ -186,10 +172,7 @@ export function useUpdateBlock(
 // Force update — D-14 "Use my version" conflict resolution
 // ----------------------------------------------------------------------------
 
-export function useForceUpdateBlock(
-  studyId: string,
-  workspaceId: string,
-) {
+export function useForceUpdateBlock(studyId: string, workspaceId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: {
@@ -271,10 +254,7 @@ export function useAddBlock(studyId: string, workspaceId: string) {
 export function useDeleteBlock(studyId: string, workspaceId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: {
-      blockId: string;
-      idempotencyKey?: string;
-    }): Promise<void> => {
+    mutationFn: async (input: { blockId: string; idempotencyKey?: string }): Promise<void> => {
       const idempotencyKey = input.idempotencyKey ?? uuidv7();
       const { error } = await supabase.rpc('delete_block', {
         p_block_id: input.blockId,
@@ -304,10 +284,7 @@ export function useDeleteBlock(studyId: string, workspaceId: string) {
 export function useDuplicateBlock(studyId: string, workspaceId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: {
-      blockId: string;
-      idempotencyKey?: string;
-    }): Promise<Block> => {
+    mutationFn: async (input: { blockId: string; idempotencyKey?: string }): Promise<Block> => {
       const idempotencyKey = input.idempotencyKey ?? uuidv7();
       const { data, error } = await supabase.rpc('duplicate_block', {
         p_block_id: input.blockId,
@@ -384,9 +361,7 @@ export function useReorderBlocks(studyId: string, workspaceId: string) {
 export function useHasAnyConflict(studyId: string | null | undefined): boolean {
   const errors = useMutationState({
     filters: {
-      mutationKey: studyId
-        ? buildUpdateBlockMutationKey(studyId)
-        : ['block-update'],
+      mutationKey: studyId ? buildUpdateBlockMutationKey(studyId) : ['block-update'],
     },
     select: (m) => m.state.error,
   });
