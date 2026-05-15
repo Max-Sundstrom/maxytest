@@ -9,8 +9,11 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --no-file-parallelism",
     "test:watch": "vitest",
+    "e2e": "playwright test",
+    "e2e:install": "playwright install --with-deps chromium webkit",
+    "e2e:ui": "playwright test --ui",
     "gen-types": "supabase gen types typescript --linked > src/lib/supabase/types.gen.ts"
   },
   "dependencies": {
