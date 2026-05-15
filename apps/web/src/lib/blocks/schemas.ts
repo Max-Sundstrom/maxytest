@@ -18,8 +18,7 @@ export const welcomeContentSchema = z.object({
   cta_label: z
     .string()
     .min(1, 'CTA label is required')
-    .max(40, 'CTA must be 40 characters or fewer')
-    .default('Start'),
+    .max(40, 'CTA must be 40 characters or fewer'),
 });
 
 export const openQuestionContentSchema = z.object({
