@@ -366,6 +366,44 @@ export type Database = {
     }
     Functions: {
       current_workspace_role: { Args: { ws: string }; Returns: string }
+      create_study: {
+        Args: { ws_id: string; study_title?: string }
+        Returns: string
+      }
+      insert_block_at: {
+        Args: {
+          p_study_id: string
+          p_position: number
+          p_type: string
+          p_content: Json
+          p_idempotency_key: string
+        }
+        Returns: Database["public"]["Tables"]["blocks"]["Row"]
+      }
+      delete_block: {
+        Args: { p_block_id: string; p_idempotency_key: string }
+        Returns: undefined
+      }
+      duplicate_block: {
+        Args: { p_block_id: string; p_idempotency_key: string }
+        Returns: Database["public"]["Tables"]["blocks"]["Row"]
+      }
+      reorder_blocks: {
+        Args: {
+          p_study_id: string
+          p_ordered_block_ids: string[]
+          p_idempotency_key: string
+        }
+        Returns: undefined
+      }
+      force_update_block: {
+        Args: {
+          p_block_id: string
+          p_content: Json
+          p_idempotency_key: string
+        }
+        Returns: Database["public"]["Tables"]["blocks"]["Row"]
+      }
     }
     Enums: {
       [_ in never]: never
