@@ -64,6 +64,11 @@ export default defineConfig({
     // src/**/*.test.ts and tests/**/*.test.ts; we declare the include
     // explicitly here so the route stays obvious in the config + survives
     // future tweaks to the default glob.
+    //
+    // Plan 01-06 Task 2 adds tests/e2e/*.spec.ts for Playwright. Those are
+    // not vitest cases — exclude the e2e directory so vitest doesn't try to
+    // run Playwright-shaped specs.
     include: ['src/**/*.{test,spec}.{ts,tsx}', 'tests/**/*.{test,spec}.{ts,tsx}'],
+    exclude: ['**/node_modules/**', '**/dist/**', 'tests/e2e/**'],
   },
 });
