@@ -59,5 +59,14 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: [],
+    // Plan 01-02 Task 5 adds the apps/web/tests/rls/ suite. Vitest's default
+    // include glob (`**/*.{test,spec}.?(c|m)[jt]s?(x)`) already matches both
+    // src/**/*.test.ts and tests/**/*.test.ts; we declare the include
+    // explicitly here so the route stays obvious in the config + survives
+    // future tweaks to the default glob.
+    include: [
+      'src/**/*.{test,spec}.{ts,tsx}',
+      'tests/**/*.{test,spec}.{ts,tsx}',
+    ],
   },
 });
