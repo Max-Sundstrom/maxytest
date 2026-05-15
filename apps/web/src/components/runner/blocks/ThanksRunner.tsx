@@ -34,27 +34,14 @@ export function ThanksRunner({ block, onMounted }: ThanksRunnerProps) {
       onMounted();
     }, 100);
     return () => window.clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [block.id]);
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center text-center">
-      <Heart
-        className="mb-4 size-12 text-accent"
-        aria-hidden="true"
-        fill="currentColor"
-      />
-      <h1 className="mb-4 text-h1 font-semibold text-foreground">
-        {content.title}
-      </h1>
-      {content.body && (
-        <p className="mb-4 text-body text-muted-foreground">
-          {content.body}
-        </p>
-      )}
-      <p className="text-body text-muted-foreground">
-        You can close this window.
-      </p>
+      <Heart className="mb-4 size-12 text-accent" aria-hidden="true" fill="currentColor" />
+      <h1 className="mb-4 text-h1 font-semibold text-foreground">{content.title}</h1>
+      {content.body && <p className="mb-4 text-body text-muted-foreground">{content.body}</p>}
+      <p className="text-body text-muted-foreground">You can close this window.</p>
     </div>
   );
 }

@@ -72,9 +72,7 @@ describe.skipIf(!rlsCredentialsAvailable)('RLS / memberships', () => {
     // on auth.users. Verify the membership shape via the user's own JWT
     // (memberships_self_read).
     const client = userClient(userA.jwt);
-    const { data } = await client
-      .from('memberships')
-      .select('workspace_id, user_id, role');
+    const { data } = await client.from('memberships').select('workspace_id, user_id, role');
     expect(data ?? []).toHaveLength(1);
     expect(data?.[0]?.role).toBe('owner');
     expect(data?.[0]?.user_id).toBe(userA.id);

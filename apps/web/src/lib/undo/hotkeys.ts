@@ -17,8 +17,7 @@ import { useBuilderStore } from '@/lib/stores/builder';
 
 function isMac(): boolean {
   if (typeof navigator === 'undefined') return false;
-  const ua = (navigator as { userAgentData?: { platform?: string } })
-    .userAgentData?.platform;
+  const ua = (navigator as { userAgentData?: { platform?: string } }).userAgentData?.platform;
   return ua === 'macOS' || /Mac/i.test(navigator.platform);
 }
 

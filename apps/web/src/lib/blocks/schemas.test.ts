@@ -13,11 +13,7 @@ import {
   thanksContentSchema,
   welcomeContentSchema,
 } from './schemas';
-import {
-  OPEN_QUESTION_DEFAULT,
-  THANKS_DEFAULT,
-  WELCOME_DEFAULT,
-} from './defaults';
+import { OPEN_QUESTION_DEFAULT, THANKS_DEFAULT, WELCOME_DEFAULT } from './defaults';
 import { BLOCK_REGISTRY } from './registry';
 import { Hand, Heart, MessageSquare, Smartphone } from 'lucide-react';
 
@@ -60,9 +56,7 @@ describe('blockContentSchema (discriminated union)', () => {
   });
 
   it('rejects unknown block content type', () => {
-    expect(() =>
-      blockContentSchema.parse({ type: 'unknown', x: 1 }),
-    ).toThrow();
+    expect(() => blockContentSchema.parse({ type: 'unknown', x: 1 })).toThrow();
   });
 
   it('discriminates welcome variant correctly', () => {
@@ -98,9 +92,7 @@ describe('block defaults', () => {
   });
 
   it('OPEN_QUESTION_DEFAULT.question matches UI-SPEC copy lock', () => {
-    expect(OPEN_QUESTION_DEFAULT.question).toBe(
-      'What did you find confusing about this design?',
-    );
+    expect(OPEN_QUESTION_DEFAULT.question).toBe('What did you find confusing about this design?');
   });
 
   it('THANKS_DEFAULT.body matches UI-SPEC copy lock', () => {
@@ -111,9 +103,7 @@ describe('block defaults', () => {
     // The defaults must be valid per the schema — otherwise create_study()
     // RPC would insert invalid jsonb that the editors then refuse to load.
     expect(blockContentSchema.safeParse(WELCOME_DEFAULT).success).toBe(true);
-    expect(blockContentSchema.safeParse(OPEN_QUESTION_DEFAULT).success).toBe(
-      true,
-    );
+    expect(blockContentSchema.safeParse(OPEN_QUESTION_DEFAULT).success).toBe(true);
     expect(blockContentSchema.safeParse(THANKS_DEFAULT).success).toBe(true);
   });
 });

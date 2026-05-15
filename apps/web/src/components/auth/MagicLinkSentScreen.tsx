@@ -79,8 +79,7 @@ export function MagicLinkSentScreen({ maskedEmail }: MagicLinkSentScreenProps) {
     }
   }, [navigate, signInWithOtp, startCountdown]);
 
-  const resendDisabled =
-    secondsRemaining > 0 || signInWithOtp.isPending || !readLastOtpEmail();
+  const resendDisabled = secondsRemaining > 0 || signInWithOtp.isPending || !readLastOtpEmail();
   const resendLabel =
     secondsRemaining > 0
       ? `Resend in ${secondsRemaining}s`
@@ -91,12 +90,10 @@ export function MagicLinkSentScreen({ maskedEmail }: MagicLinkSentScreenProps) {
   return (
     <div className="mx-auto w-full max-w-[400px] py-16">
       <h1 className="mb-1 text-h2 font-semibold tracking-tight">Maxytest</h1>
-      <h2 className="mb-2 text-display font-semibold tracking-tight">
-        Check your email
-      </h2>
+      <h2 className="mb-2 text-display font-semibold tracking-tight">Check your email</h2>
       <p className="mb-8 text-body text-muted-foreground">
-        We sent a link to <span className="font-mono">{maskedEmail}</span>. The
-        link expires in 15 minutes.
+        We sent a link to <span className="font-mono">{maskedEmail}</span>. The link expires in 15
+        minutes.
       </p>
 
       <div className="space-y-4">

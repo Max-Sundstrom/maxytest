@@ -143,7 +143,7 @@ describe.skipIf(!rlsCredentialsAvailable)('RLS / responses', () => {
 
   it('anonymous user A can INSERT a response via submit_response RPC', async () => {
     const client = userClient(anonA.jwt);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const { error } = await (client as any).rpc('submit_response', {
       p_session_id: sessionAId,
       p_block_id: openBlockId,
@@ -192,7 +192,7 @@ describe.skipIf(!rlsCredentialsAvailable)('RLS / responses', () => {
 
   it("anonymous user A cannot submit_response into another anon user's session (forbidden)", async () => {
     const client = userClient(anonA.jwt);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const { error } = await (client as any).rpc('submit_response', {
       p_session_id: sessionBId,
       p_block_id: openBlockId,
@@ -217,13 +217,12 @@ describe.skipIf(!rlsCredentialsAvailable)('RLS / responses', () => {
     // Use anonB's session for this test so we don't interfere with prior
     // tests on anonA's session.
     const client = userClient(anonB.jwt);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const { error: completeErr } = await (client as any).rpc('complete_session', {
       p_session_id: sessionBId,
     });
     expect(completeErr).toBeNull();
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error: submitErr } = await (client as any).rpc('submit_response', {
       p_session_id: sessionBId,
       p_block_id: openBlockId,

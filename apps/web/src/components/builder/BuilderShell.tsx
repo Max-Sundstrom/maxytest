@@ -92,11 +92,7 @@ export function BuilderShell({ studyId }: BuilderShellProps) {
             />
           ))}
           <div className="mt-4 flex justify-center">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setCatalogPanelOpen(true)}
-            >
+            <Button variant="ghost" size="sm" onClick={() => setCatalogPanelOpen(true)}>
               <Plus className="mr-2 size-4" />
               Add another block
             </Button>

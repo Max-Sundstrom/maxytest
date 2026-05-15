@@ -20,10 +20,7 @@ export function TestNotAcceptingScreen() {
       role="alert"
     >
       <div className="mx-auto flex max-w-md flex-col items-center text-center">
-        <CircleSlash2
-          className="mb-4 size-12 text-muted-foreground"
-          aria-hidden="true"
-        />
+        <CircleSlash2 className="mb-4 size-12 text-muted-foreground" aria-hidden="true" />
         <h1 className="mb-2 text-h1 font-semibold">
           {"This test isn't accepting responses right now."}
         </h1>

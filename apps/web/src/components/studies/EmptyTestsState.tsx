@@ -18,14 +18,9 @@ export function EmptyTestsState({ onCreate, isPending }: EmptyTestsStateProps) {
   return (
     <section className="mx-auto max-w-[480px] py-16 text-center">
       <div className="mb-6 rounded-2xl bg-surface p-12">
-        <ClipboardList
-          aria-hidden="true"
-          className="mx-auto size-12 text-muted-foreground"
-        />
+        <ClipboardList aria-hidden="true" className="mx-auto size-12 text-muted-foreground" />
       </div>
-      <h1 className="mb-2 text-display font-bold tracking-tight text-foreground">
-        No tests yet
-      </h1>
+      <h1 className="mb-2 text-display font-bold tracking-tight text-foreground">No tests yet</h1>
       <p className="mb-8 text-body text-muted-foreground">
         Start with a 3-block test and publish in under a minute.
       </p>

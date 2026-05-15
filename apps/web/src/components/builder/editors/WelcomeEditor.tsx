@@ -28,21 +28,12 @@ import type { Block } from '@/lib/blocks/types';
 export interface WelcomeEditorProps {
   block: Block;
   disabled?: boolean;
-  onSave: (input: {
-    content: WelcomeContent;
-    version: number;
-    idempotencyKey: string;
-  }) => void;
+  onSave: (input: { content: WelcomeContent; version: number; idempotencyKey: string }) => void;
   /** Latest server version for the conditional UPDATE. */
   serverVersion: number;
 }
 
-export function WelcomeEditor({
-  block,
-  disabled,
-  onSave,
-  serverVersion,
-}: WelcomeEditorProps) {
+export function WelcomeEditor({ block, disabled, onSave, serverVersion }: WelcomeEditorProps) {
   const updateLocal = useBuilderStore((s) => s.updateBlockContent);
   const form = useForm<WelcomeContent>({
     resolver: zodResolver(welcomeContentSchema),
@@ -57,7 +48,6 @@ export function WelcomeEditor({
     if (JSON.stringify(form.getValues()) !== JSON.stringify(next)) {
       form.reset(next);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [block.id, block.version, block.content]);
 
   const watched = form.watch();
@@ -79,7 +69,6 @@ export function WelcomeEditor({
     lastSavedRef.current = serialised;
     // Mirror to undo history.
     updateLocal(block.id, debounced);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debounced, disabled, serverVersion]);
 
   return (
@@ -92,11 +81,7 @@ export function WelcomeEditor({
             <FormItem>
               <FormLabel>Title</FormLabel>
               <FormControl>
-                <Input
-                  {...field}
-                  disabled={disabled}
-                  placeholder="Help us understand <product>"
-                />
+                <Input {...field} disabled={disabled} placeholder="Help us understand <product>" />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -127,11 +112,7 @@ export function WelcomeEditor({
             <FormItem>
               <FormLabel>CTA label</FormLabel>
               <FormControl>
-                <Input
-                  {...field}
-                  disabled={disabled}
-                  placeholder="Start"
-                />
+                <Input {...field} disabled={disabled} placeholder="Start" />
               </FormControl>
               <FormMessage />
             </FormItem>

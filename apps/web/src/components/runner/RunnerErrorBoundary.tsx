@@ -36,7 +36,7 @@ export class RunnerErrorBoundary extends Component<Props, State> {
     // Dev/Sentry visibility. Phase 1 logs to console; structured logging is
     // a Phase 5 polish step. PII never lands here because the runner doesn't
     // collect any (D-25 + Pitfall 10 default privacy posture).
-    // eslint-disable-next-line no-console
+
     console.error('RunnerErrorBoundary caught:', error, errorInfo);
   }
 
@@ -52,14 +52,9 @@ export class RunnerErrorBoundary extends Component<Props, State> {
         role="alert"
       >
         <div className="mx-auto flex max-w-md flex-col items-center text-center">
-          <AlertOctagon
-            className="mb-4 size-12 text-destructive"
-            aria-hidden="true"
-          />
+          <AlertOctagon className="mb-4 size-12 text-destructive" aria-hidden="true" />
           <h1 className="mb-2 text-h1 font-semibold">Something went wrong.</h1>
-          <p className="mb-6 text-body text-muted-foreground">
-            Try refreshing the page.
-          </p>
+          <p className="mb-6 text-body text-muted-foreground">Try refreshing the page.</p>
           <Button
             type="button"
             size="lg"

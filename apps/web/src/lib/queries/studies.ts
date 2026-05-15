@@ -62,13 +62,9 @@ function invalidateStudyCaches(
   qc.invalidateQueries({ queryKey: ['study', studyId] });
 }
 
-export function useStudies(
-  workspaceId: string | null | undefined,
-): UseStudiesResult {
+export function useStudies(workspaceId: string | null | undefined): UseStudiesResult {
   const query = useQuery({
-    queryKey: workspaceId
-      ? buildStudyQueryKey(workspaceId, false)
-      : ['studies', 'none', 'active'],
+    queryKey: workspaceId ? buildStudyQueryKey(workspaceId, false) : ['studies', 'none', 'active'],
     enabled: !!workspaceId,
     staleTime: 10_000,
     queryFn: async (): Promise<StudyRow[]> => {
@@ -94,13 +90,9 @@ export function useStudies(
  * consumes this; the cache key is independent of the active-studies key so
  * an archive/restore mutation can invalidate both surgically.
  */
-export function useStudiesArchived(
-  workspaceId: string | null | undefined,
-): UseStudiesResult {
+export function useStudiesArchived(workspaceId: string | null | undefined): UseStudiesResult {
   const query = useQuery({
-    queryKey: workspaceId
-      ? buildStudyQueryKey(workspaceId, true)
-      : ['studies', 'none', 'archived'],
+    queryKey: workspaceId ? buildStudyQueryKey(workspaceId, true) : ['studies', 'none', 'archived'],
     enabled: !!workspaceId,
     staleTime: 30_000,
     queryFn: async (): Promise<StudyRow[]> => {
@@ -152,9 +144,7 @@ export interface CreateStudyResult {
 export function useCreateStudy(workspaceId: string | null | undefined) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (
-      input: { title?: string } = {},
-    ): Promise<CreateStudyResult> => {
+    mutationFn: async (input: { title?: string } = {}): Promise<CreateStudyResult> => {
       if (!workspaceId) throw new Error('Workspace not loaded');
       const { data, error } = await supabase.rpc('create_study', {
         ws_id: workspaceId,
@@ -321,10 +311,7 @@ export function usePublishStudy() {
 export function useMoveStudyToDraft() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: {
-      studyId: string;
-      workspaceId?: string | null;
-    }): Promise<void> => {
+    mutationFn: async (input: { studyId: string; workspaceId?: string | null }): Promise<void> => {
       const { error } = await supabase.rpc(
         'move_study_to_draft' as never,
         { study_uuid: input.studyId } as never,
@@ -332,9 +319,7 @@ export function useMoveStudyToDraft() {
       if (error) throw error;
     },
     onSuccess: (_data, input) => {
-      toast.success(
-        "Moved to draft. The link won't accept new responses until you publish again.",
-      );
+      toast.success("Moved to draft. The link won't accept new responses until you publish again.");
       invalidateStudyCaches(qc, input.workspaceId, input.studyId);
     },
     onError: () => {
@@ -349,10 +334,7 @@ export function useMoveStudyToDraft() {
 export function useArchiveStudy() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: {
-      studyId: string;
-      workspaceId?: string | null;
-    }): Promise<void> => {
+    mutationFn: async (input: { studyId: string; workspaceId?: string | null }): Promise<void> => {
       const { error } = await supabase.rpc(
         'archive_study' as never,
         { study_uuid: input.studyId } as never,
@@ -375,10 +357,7 @@ export function useArchiveStudy() {
 export function useRestoreStudy() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: {
-      studyId: string;
-      workspaceId?: string | null;
-    }): Promise<void> => {
+    mutationFn: async (input: { studyId: string; workspaceId?: string | null }): Promise<void> => {
       const { error } = await supabase.rpc(
         'restore_study' as never,
         { study_uuid: input.studyId } as never,

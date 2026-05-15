@@ -31,17 +31,10 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { formatRelativeTime } from '@/lib/utils';
-import {
-  useArchiveStudy,
-  useMoveStudyToDraft,
-  type StudyRow,
-} from '@/lib/queries/studies';
+import { useArchiveStudy, useMoveStudyToDraft, type StudyRow } from '@/lib/queries/studies';
 
 // Route-tree-agnostic navigate type — see comment in lib/queries/auth.ts.
-type LooseNavigate = (opts: {
-  to: string;
-  params?: Record<string, string>;
-}) => unknown;
+type LooseNavigate = (opts: { to: string; params?: Record<string, string> }) => unknown;
 
 export interface StudyListProps {
   studies: StudyRow[];
@@ -125,9 +118,7 @@ export function StudyList({ studies, workspaceId }: StudyListProps) {
 
                   {study.status === 'published' && (
                     <DropdownMenuItem
-                      onSelect={() =>
-                        moveToDraft.mutate({ studyId: study.id, workspaceId })
-                      }
+                      onSelect={() => moveToDraft.mutate({ studyId: study.id, workspaceId })}
                       disabled={moveToDraft.isPending}
                     >
                       Move to draft
@@ -140,9 +131,7 @@ export function StudyList({ studies, workspaceId }: StudyListProps) {
                         Duplicate
                       </DropdownMenuItem>
                     </TooltipTrigger>
-                    <TooltipContent side="left">
-                      Available in Phase 4
-                    </TooltipContent>
+                    <TooltipContent side="left">Available in Phase 4</TooltipContent>
                   </Tooltip>
 
                   <DropdownMenuSeparator />
@@ -166,9 +155,7 @@ export function StudyList({ studies, workspaceId }: StudyListProps) {
 
         {/* Empty list inside the populated branch shouldn't happen — caller swaps in EmptyTestsState — but defend anyway. */}
         {studies.length === 0 && (
-          <li className="py-8 text-center text-body text-muted-foreground">
-            No tests yet.
-          </li>
+          <li className="py-8 text-center text-body text-muted-foreground">No tests yet.</li>
         )}
       </ul>
 
@@ -182,8 +169,8 @@ export function StudyList({ studies, workspaceId }: StudyListProps) {
           <DialogHeader>
             <DialogTitle>Archive this test?</DialogTitle>
             <DialogDescription>
-              Existing responses are preserved. Respondents won&rsquo;t be able
-              to start new sessions. You have 30 days to restore.
+              Existing responses are preserved. Respondents won&rsquo;t be able to start new
+              sessions. You have 30 days to restore.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

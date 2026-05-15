@@ -25,13 +25,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormMessage,
-} from '@/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form';
 import type { Block } from '@/lib/blocks/types';
 import type { OpenQuestionContent } from '@/lib/blocks/schemas';
 
@@ -106,7 +100,6 @@ export function OpenQuestionRunner({
   // re-uses the same component instance under React reconciliation).
   useEffect(() => {
     form.reset({ text: initialValue });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [block.id]);
 
   function handle(values: AnswerForm) {
@@ -115,18 +108,11 @@ export function OpenQuestionRunner({
 
   return (
     <Form {...form}>
-      <form
-        className="flex flex-1 flex-col"
-        onSubmit={form.handleSubmit(handle)}
-      >
+      <form className="flex flex-1 flex-col" onSubmit={form.handleSubmit(handle)}>
         <div className="flex-1">
-          <h1 className="mb-4 text-h1 font-semibold text-foreground">
-            {content.question}
-          </h1>
+          <h1 className="mb-4 text-h1 font-semibold text-foreground">{content.question}</h1>
           {content.helper && (
-            <p className="mb-4 text-body text-muted-foreground">
-              {content.helper}
-            </p>
+            <p className="mb-4 text-body text-muted-foreground">{content.helper}</p>
           )}
           <FormField
             control={form.control as never}
@@ -154,12 +140,7 @@ export function OpenQuestionRunner({
             paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))',
           }}
         >
-          <Button
-            type="submit"
-            variant="default"
-            size="lg"
-            className="min-h-touch w-full"
-          >
+          <Button type="submit" variant="default" size="lg" className="min-h-touch w-full">
             {isLast ? 'Finish' : 'Next'}
           </Button>
         </div>

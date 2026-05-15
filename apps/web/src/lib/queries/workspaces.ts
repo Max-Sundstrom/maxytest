@@ -54,9 +54,7 @@ export function useCurrentWorkspace(): CurrentWorkspaceResult {
       // depending on the relationship cardinality. Normalize to the object.
       const ws = Array.isArray(data.workspaces) ? data.workspaces[0] : data.workspaces;
       return {
-        workspace: ws
-          ? { id: ws.id, name: ws.name, slug: ws.slug }
-          : null,
+        workspace: ws ? { id: ws.id, name: ws.name, slug: ws.slug } : null,
         role: data.role as Role,
       };
     },

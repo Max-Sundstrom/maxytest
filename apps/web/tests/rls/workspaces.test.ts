@@ -80,10 +80,7 @@ describe.skipIf(!rlsCredentialsAvailable)('RLS / workspaces', () => {
 
   it('anon cannot SELECT any workspace (RLS returns empty, not 401)', async () => {
     const client = anonClient();
-    const { data, error } = await client
-      .from('workspaces')
-      .select('id')
-      .eq('id', workspaceA);
+    const { data, error } = await client.from('workspaces').select('id').eq('id', workspaceA);
     // RLS returns an empty array — NOT an auth error — because the policy
     // simply doesn't grant SELECT to anonymous JWTs.
     expect(error).toBeNull();
@@ -92,10 +89,7 @@ describe.skipIf(!rlsCredentialsAvailable)('RLS / workspaces', () => {
 
   it("user A cannot SELECT user B's workspace", async () => {
     const client = userClient(userA.jwt);
-    const { data, error } = await client
-      .from('workspaces')
-      .select('id')
-      .eq('id', workspaceB);
+    const { data, error } = await client.from('workspaces').select('id').eq('id', workspaceB);
     expect(error).toBeNull();
     expect(data ?? []).toHaveLength(0);
   });
@@ -115,11 +109,7 @@ describe.skipIf(!rlsCredentialsAvailable)('RLS / workspaces', () => {
 
   it("user A cannot DELETE user B's workspace", async () => {
     const client = userClient(userA.jwt);
-    const { data, error } = await client
-      .from('workspaces')
-      .delete()
-      .eq('id', workspaceB)
-      .select();
+    const { data, error } = await client.from('workspaces').delete().eq('id', workspaceB).select();
     expect(error).toBeNull();
     expect(data ?? []).toHaveLength(0);
     // Verify the workspace still exists via admin path (not RLS).

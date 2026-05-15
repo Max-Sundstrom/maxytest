@@ -33,12 +33,7 @@ export interface RunnerProgressBarProps {
   className?: string;
 }
 
-export function RunnerProgressBar({
-  current,
-  total,
-  label,
-  className,
-}: RunnerProgressBarProps) {
+export function RunnerProgressBar({ current, total, label, className }: RunnerProgressBarProps) {
   // Defensive: a malformed (current,total) pair shouldn't crash the runner.
   const safeTotal = Math.max(1, total);
   const safeCurrent = Math.min(Math.max(0, current), safeTotal - 1);
@@ -53,10 +48,7 @@ export function RunnerProgressBar({
       aria-valuemax={safeTotal}
       aria-valuenow={safeCurrent + 1}
       aria-valuetext={valueText}
-      className={cn(
-        'fixed top-0 inset-x-0 h-1 bg-slate-100 z-50',
-        className,
-      )}
+      className={cn('fixed top-0 inset-x-0 h-1 bg-slate-100 z-50', className)}
     >
       <div
         className="h-full bg-accent motion-safe:transition-[width] motion-safe:duration-200 motion-safe:ease-linear motion-reduce:transition-none"

@@ -15,11 +15,7 @@
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  useRestoreStudy,
-  useStudiesArchived,
-  type StudyRow,
-} from '@/lib/queries/studies';
+import { useRestoreStudy, useStudiesArchived, type StudyRow } from '@/lib/queries/studies';
 
 export interface ArchivedTabPanelProps {
   workspaceId: string | null;
@@ -74,11 +70,7 @@ export function ArchivedTabPanel({ workspaceId }: ArchivedTabPanelProps) {
   }
 
   if (studies.length === 0) {
-    return (
-      <p className="py-12 text-center text-body text-muted-foreground">
-        No archived tests.
-      </p>
-    );
+    return <p className="py-12 text-center text-body text-muted-foreground">No archived tests.</p>;
   }
 
   return (
@@ -88,12 +80,8 @@ export function ArchivedTabPanel({ workspaceId }: ArchivedTabPanelProps) {
           key={study.id}
           study={study}
           workspaceId={workspaceId}
-          onRestore={(studyId) =>
-            restore.mutate({ studyId, workspaceId })
-          }
-          isRestoring={
-            restore.isPending && restore.variables?.studyId === study.id
-          }
+          onRestore={(studyId) => restore.mutate({ studyId, workspaceId })}
+          isRestoring={restore.isPending && restore.variables?.studyId === study.id}
         />
       ))}
     </ul>
@@ -116,9 +104,7 @@ function ArchivedRow({ study, onRestore, isRestoring }: ArchivedRowProps) {
           <h2 className="truncate text-h3 font-semibold text-muted-foreground">
             {study.title || 'Untitled test'}
           </h2>
-          <p className="mt-1 text-small text-muted-foreground">
-            {formatRetention(days)}
-          </p>
+          <p className="mt-1 text-small text-muted-foreground">{formatRetention(days)}</p>
         </div>
         <Button
           type="button"

@@ -175,23 +175,14 @@ export function BlockCard({ block, index, studyId, workspaceId }: BlockCardProps
             {String(index + 1).padStart(2, '0')}
           </span>
           <Icon aria-hidden="true" className="size-4 text-muted-foreground" />
-          <span className="text-h3 font-semibold text-foreground">
-            {entry.label}
-          </span>
+          <span className="text-h3 font-semibold text-foreground">{entry.label}</span>
         </div>
-        <SaveStateIndicator
-          state={saveState}
-          lastSavedAt={lastSavedAt}
-          onRetry={handleRetry}
-        />
+        <SaveStateIndicator state={saveState} lastSavedAt={lastSavedAt} onRetry={handleRetry} />
       </div>
       <div className="p-6">
         {isConflict ? (
           <div className="flex flex-col gap-4">
-            <ConflictResolutionBanner
-              onUseServer={handleUseServer}
-              onUseMine={handleUseMine}
-            />
+            <ConflictResolutionBanner onUseServer={handleUseServer} onUseMine={handleUseMine} />
             <div className="pointer-events-none opacity-60">{editor}</div>
           </div>
         ) : (

@@ -57,7 +57,7 @@ export function WorkspaceTopBar() {
   const builderMatch = matchRoute({ to: '/studies/$id/edit', fuzzy: false });
   const isBuilder = !!builderMatch;
   const params = useParams({ strict: false }) as { id?: string };
-  const studyId = isBuilder ? params.id ?? null : null;
+  const studyId = isBuilder ? (params.id ?? null) : null;
 
   const email = session?.user.email ?? '';
   const emailLocal = email.split('@')[0] ?? '';
@@ -70,19 +70,12 @@ export function WorkspaceTopBar() {
     >
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <div className="text-h3 font-semibold text-muted-foreground">
-          {isLoading || !workspace ? (
-            <Skeleton className="h-5 w-40" />
-          ) : (
-            workspace.name
-          )}
+          {isLoading || !workspace ? <Skeleton className="h-5 w-40" /> : workspace.name}
         </div>
         {isBuilder && studyId && (
           <>
             <span className="text-muted-foreground">/</span>
-            <BuilderTitleAndChrome
-              studyId={studyId}
-              workspaceId={workspace?.id ?? null}
-            />
+            <BuilderTitleAndChrome studyId={studyId} workspaceId={workspace?.id ?? null} />
           </>
         )}
       </div>
@@ -120,10 +113,7 @@ interface BuilderTitleAndChromeProps {
   workspaceId: string | null;
 }
 
-function BuilderTitleAndChrome({
-  studyId,
-  workspaceId,
-}: BuilderTitleAndChromeProps) {
+function BuilderTitleAndChrome({ studyId, workspaceId }: BuilderTitleAndChromeProps) {
   const studyQuery = useStudy(studyId);
   const updateTitle = useUpdateStudyTitle(studyId);
   const setPreviewOverlayOpen = useUiStore((s) => s.setPreviewOverlayOpen);
@@ -134,16 +124,11 @@ function BuilderTitleAndChrome({
   const restore = useRestoreStudy();
 
   const [publishDialogOpen, setPublishDialogOpen] = useState(false);
-  const [publishedRunToken, setPublishedRunToken] = useState<string | null>(
-    null,
-  );
+  const [publishedRunToken, setPublishedRunToken] = useState<string | null>(null);
   const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
 
   const study = studyQuery.data;
-  const status = (study?.status ?? 'draft') as
-    | 'draft'
-    | 'published'
-    | 'archived';
+  const status = (study?.status ?? 'draft') as 'draft' | 'published' | 'archived';
 
   const handlePublish = () => {
     publish.mutate(
@@ -203,10 +188,7 @@ function BuilderTitleAndChrome({
                 { title: next },
                 {
                   onError: (err: unknown) => {
-                    const message =
-                      err instanceof Error
-                        ? err.message
-                        : 'Try again in a moment.';
+                    const message = err instanceof Error ? err.message : 'Try again in a moment.';
                     toast.error("Couldn't rename the test", {
                       description: message,
                     });
@@ -224,11 +206,7 @@ function BuilderTitleAndChrome({
         <StatusBadge status={status} />
 
         {/* Preview is available in all three states. */}
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => setPreviewOverlayOpen(true)}
-        >
+        <Button size="sm" variant="ghost" onClick={() => setPreviewOverlayOpen(true)}>
           Preview
         </Button>
 
@@ -252,13 +230,8 @@ function BuilderTitleAndChrome({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-48">
-              <DropdownMenuItem onSelect={handleCopyLink}>
-                Copy link
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={handleMoveToDraft}
-                disabled={moveToDraft.isPending}
-              >
+              <DropdownMenuItem onSelect={handleCopyLink}>Copy link</DropdownMenuItem>
+              <DropdownMenuItem onSelect={handleMoveToDraft} disabled={moveToDraft.isPending}>
                 Move to draft
               </DropdownMenuItem>
               <DropdownMenuSeparator />
@@ -344,8 +317,8 @@ function ArchiveConfirmDialog({
         <DialogHeader>
           <DialogTitle>Archive this test?</DialogTitle>
           <DialogDescription>
-            Existing responses are preserved. Respondents won&rsquo;t be able to
-            start new sessions. You have 30 days to restore.
+            Existing responses are preserved. Respondents won&rsquo;t be able to start new sessions.
+            You have 30 days to restore.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

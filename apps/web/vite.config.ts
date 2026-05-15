@@ -64,9 +64,6 @@ export default defineConfig({
     // src/**/*.test.ts and tests/**/*.test.ts; we declare the include
     // explicitly here so the route stays obvious in the config + survives
     // future tweaks to the default glob.
-    include: [
-      'src/**/*.{test,spec}.{ts,tsx}',
-      'tests/**/*.{test,spec}.{ts,tsx}',
-    ],
+    include: ['src/**/*.{test,spec}.{ts,tsx}', 'tests/**/*.{test,spec}.{ts,tsx}'],
   },
 });

@@ -73,9 +73,7 @@ export const useBuilderStore = create<BuilderState>()(
 
       updateBlockContent: (id, content) =>
         set((state) => ({
-          blocks: state.blocks.map((b) =>
-            b.id === id ? { ...b, content } : b,
-          ),
+          blocks: state.blocks.map((b) => (b.id === id ? { ...b, content } : b)),
         })),
 
       reorderBlocks: (fromIndex, toIndex) =>
@@ -132,6 +130,5 @@ export const useBuilderStore = create<BuilderState>()(
 
 export const selectBlocks = (s: BuilderState) => s.blocks;
 export const selectStudyId = (s: BuilderState) => s.studyId;
-export const selectBlockById = (id: string | null | undefined) =>
-  (s: BuilderState) =>
-    id ? s.blocks.find((b) => b.id === id) ?? null : null;
+export const selectBlockById = (id: string | null | undefined) => (s: BuilderState) =>
+  id ? (s.blocks.find((b) => b.id === id) ?? null) : null;
