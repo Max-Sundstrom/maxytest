@@ -1,43 +1,24 @@
-import { createFileRoute } from '@tanstack/react-router';
-import { Button } from '@/components/ui/button';
+import { createFileRoute, redirect } from '@tanstack/react-router';
+import { supabase } from '@/lib/supabase/auth';
 
 /**
- * Walking-skeleton landing route.
+ * `/` — root router. No UI in Plan 01-02; redirects based on session presence.
  *
- * Phase 1 Plan 01-01 contract (must_haves.truths):
- *   - Renders one shadcn <Button> whose computed background = --color-accent
- *     (verified manually in checkpoint Task 4 via DevTools).
- *   - Uses Inter font (loaded in main.tsx; tokens.css points --font-sans at Inter).
+ * Plan 01-01 shipped a smoke-test landing card here. Plan 01-02 replaces it
+ * because the deployed product has no use for a landing page at the root URL
+ * yet — signed-in designers want /app, signed-out designers want /auth/login.
  *
- * This route is the "Maxytest is alive" smoke screen; later plans replace it with
- * an auth-aware redirect (auth.login.tsx in Plan 01-02 → /app dashboard in Plan 01-03).
+ * Plan 01-06 adds a marketing landing page when the product ships its first
+ * public-facing surface; for now '/' is a router.
  */
 function IndexComponent() {
-  const bootTime = new Date().toISOString();
-  // import.meta.env.MODE is one of 'development' | 'production' | (custom)
-  const mode = import.meta.env.MODE;
-
-  return (
-    <main className="flex min-h-[100dvh] items-center justify-center bg-background px-4 py-16">
-      <div className="w-full max-w-md rounded-lg border border-border bg-card p-8 shadow-sm">
-        <h1 className="mb-2 text-3xl font-semibold tracking-tight text-foreground">
-          Maxytest is alive
-        </h1>
-        <p className="mb-1 text-sm text-muted-foreground">
-          Walking skeleton booted on Vite{' '}
-          <span className="font-mono text-xs tabular-nums">{mode}</span>.
-        </p>
-        <p className="mb-6 font-mono text-xs tabular-nums text-muted-foreground">
-          {bootTime}
-        </p>
-        <Button variant="default" size="default">
-          Click me
-        </Button>
-      </div>
-    </main>
-  );
+  return null;
 }
 
 export const Route = createFileRoute('/')({
+  beforeLoad: async () => {
+    const { data } = await supabase.auth.getSession();
+    throw redirect({ to: data.session ? '/app' : '/auth/login' });
+  },
   component: IndexComponent,
 });
