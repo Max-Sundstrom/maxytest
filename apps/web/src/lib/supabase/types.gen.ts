@@ -365,6 +365,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      archive_study: { Args: { study_uuid: string }; Returns: undefined }
       create_study: {
         Args: { study_title?: string; ws_id: string }
         Returns: string
@@ -414,6 +415,8 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      gen_run_token: { Args: never; Returns: string }
+      hard_delete_archived_studies: { Args: never; Returns: number }
       insert_block_at: {
         Args: {
           p_content: Json
@@ -440,6 +443,14 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      move_study_to_draft: { Args: { study_uuid: string }; Returns: undefined }
+      publish_study: {
+        Args: { study_uuid: string }
+        Returns: {
+          run_token: string
+          status: string
+        }[]
+      }
       reorder_blocks: {
         Args: {
           p_idempotency_key: string
@@ -448,6 +459,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      restore_study: { Args: { study_uuid: string }; Returns: undefined }
     }
     Enums: {
       [_ in never]: never
