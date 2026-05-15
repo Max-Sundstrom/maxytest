@@ -2,12 +2,14 @@
  * <WorkspaceTopBar> — sticky h-14 header for every `_app/*` route.
  *
  * Plan 01-02 surface: workspace name + avatar dropdown with "Sign out".
- * Plan 01-03 surface: when the active route is the builder
- *   (`/_app/studies/$id/edit`), additionally render:
- *     - inline-editable test name (click to edit, blur/Enter saves, Esc cancels)
- *     - status badge
- *     - "Preview" button → toggles `useUiStore.previewOverlayOpen`
- *     - "Publish" button (Plan 01-04 wires the mutation; stub with tooltip here)
+ * Plan 01-03 surface: when on the builder route, additionally render:
+ *   - inline-editable test name (click to edit, blur/Enter saves, Esc cancels)
+ *   - status badge, "Preview" button, "Publish" stub
+ * Plan 01-04 surface: wire the status lifecycle controls. Status-keyed UI:
+ *   - draft     → "Publish" (default) → calls usePublishStudy → opens PublishLinkDialog on success
+ *   - published → "Published ▾" DropdownMenu (Copy link, Move to draft, Archive [confirm])
+ *   - archived  → "Restore" button → calls useRestoreStudy
+ *   "Preview" remains visible across all three states (carried from 01-03).
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -16,19 +18,31 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { PublishLinkDialog } from '@/components/studies/PublishLinkDialog';
 import { useSession, useSignOut } from '@/lib/queries/auth';
-import { useStudy, useUpdateStudyTitle } from '@/lib/queries/studies';
+import {
+  useArchiveStudy,
+  useMoveStudyToDraft,
+  usePublishStudy,
+  useRestoreStudy,
+  useStudy,
+  useUpdateStudyTitle,
+} from '@/lib/queries/studies';
 import { useCurrentWorkspace } from '@/lib/queries/workspaces';
 import { useUiStore } from '@/lib/stores/ui';
 
@@ -65,7 +79,10 @@ export function WorkspaceTopBar() {
         {isBuilder && studyId && (
           <>
             <span className="text-muted-foreground">/</span>
-            <BuilderTitleAndChrome studyId={studyId} />
+            <BuilderTitleAndChrome
+              studyId={studyId}
+              workspaceId={workspace?.id ?? null}
+            />
           </>
         )}
       </div>
@@ -94,16 +111,84 @@ export function WorkspaceTopBar() {
 }
 
 // ----------------------------------------------------------------------------
-// Builder-only chrome: inline title + status badge + Preview + Publish
+// Builder-only chrome: inline title + status badge + Preview + status-keyed
+// publish/archive/restore controls (Plan 01-04).
 // ----------------------------------------------------------------------------
 
-function BuilderTitleAndChrome({ studyId }: { studyId: string }) {
+interface BuilderTitleAndChromeProps {
+  studyId: string;
+  workspaceId: string | null;
+}
+
+function BuilderTitleAndChrome({
+  studyId,
+  workspaceId,
+}: BuilderTitleAndChromeProps) {
   const studyQuery = useStudy(studyId);
   const updateTitle = useUpdateStudyTitle(studyId);
   const setPreviewOverlayOpen = useUiStore((s) => s.setPreviewOverlayOpen);
 
+  const publish = usePublishStudy();
+  const moveToDraft = useMoveStudyToDraft();
+  const archive = useArchiveStudy();
+  const restore = useRestoreStudy();
+
+  const [publishDialogOpen, setPublishDialogOpen] = useState(false);
+  const [publishedRunToken, setPublishedRunToken] = useState<string | null>(
+    null,
+  );
+  const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
+
   const study = studyQuery.data;
-  const status = study?.status ?? 'draft';
+  const status = (study?.status ?? 'draft') as
+    | 'draft'
+    | 'published'
+    | 'archived';
+
+  const handlePublish = () => {
+    publish.mutate(
+      { studyId, workspaceId },
+      {
+        onSuccess: (data) => {
+          setPublishedRunToken(data.run_token);
+          setPublishDialogOpen(true);
+        },
+      },
+    );
+  };
+
+  const handleMoveToDraft = () => {
+    moveToDraft.mutate({ studyId, workspaceId });
+  };
+
+  const handleCopyLink = async () => {
+    const token = study?.run_token;
+    if (!token) {
+      toast.error('No share link yet — publish the test first.');
+      return;
+    }
+    const url = `${window.location.origin}/r/${token}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success('Link copied');
+    } catch {
+      toast.error("Couldn't access the clipboard.");
+    }
+  };
+
+  const handleArchive = () => {
+    archive.mutate(
+      { studyId, workspaceId },
+      {
+        onSuccess: () => setArchiveConfirmOpen(false),
+        onError: () => setArchiveConfirmOpen(false),
+      },
+    );
+  };
+
+  const handleRestore = () => {
+    restore.mutate({ studyId, workspaceId });
+  };
 
   return (
     <>
@@ -137,6 +222,8 @@ function BuilderTitleAndChrome({ studyId }: { studyId: string }) {
 
       <div className="flex items-center gap-2">
         <StatusBadge status={status} />
+
+        {/* Preview is available in all three states. */}
         <Button
           size="sm"
           variant="ghost"
@@ -144,20 +231,85 @@ function BuilderTitleAndChrome({ studyId }: { studyId: string }) {
         >
           Preview
         </Button>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button size="sm" variant="default" disabled aria-disabled>
-              {status === 'published' ? 'Move to draft' : 'Publish'}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            Publish flow available after Plan 01-04
-          </TooltipContent>
-        </Tooltip>
+
+        {status === 'draft' && (
+          <Button
+            size="sm"
+            variant="default"
+            onClick={handlePublish}
+            disabled={publish.isPending}
+            aria-busy={publish.isPending || undefined}
+          >
+            {publish.isPending ? 'Publishing…' : 'Publish'}
+          </Button>
+        )}
+
+        {status === 'published' && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="default">
+                Published ▾
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-48">
+              <DropdownMenuItem onSelect={handleCopyLink}>
+                Copy link
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={handleMoveToDraft}
+                disabled={moveToDraft.isPending}
+              >
+                Move to draft
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.preventDefault();
+                  setArchiveConfirmOpen(true);
+                }}
+                variant="destructive"
+              >
+                Archive
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+
+        {status === 'archived' && (
+          <Button
+            size="sm"
+            variant="default"
+            onClick={handleRestore}
+            disabled={restore.isPending}
+            aria-busy={restore.isPending || undefined}
+          >
+            {restore.isPending ? 'Restoring…' : 'Restore'}
+          </Button>
+        )}
       </div>
+
+      <PublishLinkDialog
+        open={publishDialogOpen}
+        onOpenChange={(open) => {
+          setPublishDialogOpen(open);
+          if (!open) setPublishedRunToken(null);
+        }}
+        runToken={publishedRunToken}
+      />
+
+      <ArchiveConfirmDialog
+        open={archiveConfirmOpen}
+        onOpenChange={setArchiveConfirmOpen}
+        onConfirm={handleArchive}
+        isPending={archive.isPending}
+      />
     </>
   );
 }
+
+// ----------------------------------------------------------------------------
+// Status badge
+// ----------------------------------------------------------------------------
 
 function StatusBadge({ status }: { status: string }) {
   if (status === 'published') {
@@ -168,6 +320,61 @@ function StatusBadge({ status }: { status: string }) {
   }
   return <Badge className="bg-muted text-muted-foreground">Draft</Badge>;
 }
+
+// ----------------------------------------------------------------------------
+// Archive confirm dialog — copy-locked to UI-SPEC.md §"Status lifecycle"
+// ----------------------------------------------------------------------------
+
+interface ArchiveConfirmDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: () => void;
+  isPending?: boolean;
+}
+
+function ArchiveConfirmDialog({
+  open,
+  onOpenChange,
+  onConfirm,
+  isPending,
+}: ArchiveConfirmDialogProps) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Archive this test?</DialogTitle>
+          <DialogDescription>
+            Existing responses are preserved. Respondents won&rsquo;t be able to
+            start new sessions. You have 30 days to restore.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={isPending}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={onConfirm}
+            disabled={isPending}
+            aria-busy={isPending || undefined}
+          >
+            {isPending ? 'Archiving…' : 'Archive'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// Inline title editor (carried over from Plan 01-03)
+// ----------------------------------------------------------------------------
 
 interface InlineTitleEditorProps {
   value: string;
