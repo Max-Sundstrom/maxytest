@@ -1,0 +1,106 @@
+name: CI
+
+# Plan 01-06 Task 3 — pull-request gating + main-branch verification.
+#
+# Pipeline:
+#   1. install (frozen lockfile)
+#   2. lint (root pnpm -r lint → apps/web ESLint flat config)
+#   3. typecheck (root pnpm -r typecheck → apps/web tsc --noEmit)
+#   4. vitest unit + RLS (`--no-file-parallelism` to avoid Supabase Free
+#      tier auth rate-limits; the RLS suite skips when
+#      `SUPABASE_SERVICE_ROLE_KEY` is unset, so fork PRs stay green)
+#   5. apps/web build → dist/
+#   6. playwright install (chromium + webkit only — firefox not needed)
+#   7. preview server (background) → playwright test
+#   8. upload playwright HTML report on failure
+#
+# Secrets required for full coverage (set in repo Settings → Secrets):
+#   - VITE_SUPABASE_URL
+#   - VITE_SUPABASE_ANON_KEY
+#   - SUPABASE_SERVICE_ROLE_KEY  (test project, NOT production)
+# Forks do NOT receive secrets per GitHub Actions default — fork PRs run
+# the lint/typecheck/build steps + the few E2E cases that don't need creds.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Cancel in-flight runs for the same PR / branch when a new commit lands.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      # Inject Supabase test-project creds for vitest (RLS) + Playwright fixtures.
+      # `vite build` reads VITE_* at build time so the resulting bundle points
+      # at the test project; the preview server then talks to that project.
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm -r lint
+
+      - name: Typecheck
+        run: pnpm -r typecheck
+
+      - name: Vitest (unit + RLS, serial)
+        # `--no-file-parallelism` is required to avoid Supabase Free tier's
+        # auth.signInWithOtp rate-limit when multiple test files create
+        # users in parallel. The apps/web `test` script bakes this flag in.
+        run: pnpm --filter @maxytest/web test
+
+      - name: Build apps/web
+        run: pnpm --filter @maxytest/web build
+
+      - name: Install Playwright browsers
+        run: pnpm --filter @maxytest/web exec playwright install --with-deps chromium webkit
+
+      - name: Start preview server
+        # vite preview serves apps/web/dist on port 4173. Run in background;
+        # Playwright's webServer block is disabled in CI (PLAYWRIGHT_BASE_URL
+        # tells the suite where to connect).
+        run: |
+          pnpm --filter @maxytest/web exec vite preview --port 4173 &
+          # Wait up to 30s for the server to come up.
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:4173/ >/dev/null 2>&1; then
+              echo "preview server ready after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Playwright tests
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:4173
+        run: pnpm --filter @maxytest/web exec playwright test
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report/
+          retention-days: 14

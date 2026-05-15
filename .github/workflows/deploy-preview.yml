@@ -1,0 +1,41 @@
+name: Deploy preview (Cloudflare Pages)
+
+# Plan 01-06 Task 3 §2 — STUB workflow.
+#
+# Phase 1 ships the *application code*; Cloudflare Pages' built-in GitHub
+# integration handles the actual deploy (push-to-deploy on `main`, preview
+# deploy per PR). That integration is configured in the Cloudflare dashboard
+# per `docs/INSTALL_CLOUD.md` Step 4 — no workflow YAML needed.
+#
+# This file is committed as a placeholder so:
+#   1. The repo's `.github/workflows/` folder advertises the deploy surface.
+#   2. Phase 8 (DIST-04 README polish) can extend this into a custom-domain
+#      / wrangler-based pipeline if the operator wants finer control
+#      (e.g. blocking deploy until CI passes, custom build envs per branch).
+#
+# Until Phase 8, this workflow is intentionally a no-op. Cloudflare Pages
+# does the work via its own GitHub App integration.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+
+jobs:
+  noop:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Document Cloudflare Pages deploy contract
+        run: |
+          echo "==> Cloudflare Pages deploys this repo via its built-in GitHub"
+          echo "    integration (configured in the Cloudflare dashboard)."
+          echo
+          echo "    Build command: pnpm --filter @maxytest/web build"
+          echo "    Output dir:    apps/web/dist"
+          echo "    Root dir:      /"
+          echo "    Node version:  22"
+          echo "    Env vars:      VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY"
+          echo "                   (set for Production AND Preview)"
+          echo
+          echo "    See docs/INSTALL_CLOUD.md Step 4 for full setup."
