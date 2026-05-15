@@ -36,3 +36,6 @@ test-results/
 
 # pnpm
 .pnpm-store/
+
+# Supabase CLI per-machine link cache (recreated by `supabase link`)
+supabase/.temp/

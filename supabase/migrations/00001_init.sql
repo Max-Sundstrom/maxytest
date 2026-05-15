@@ -27,24 +27,9 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- =============================================================================
 -- 1. Helpers
 -- =============================================================================
-
--- current_workspace_role(ws) — STABLE SECURITY DEFINER helper for RLS.
--- Returns the calling user's role in the given workspace, or NULL.
--- Uses a direct WHERE filter (NO `IN (SELECT ...)` anti-pattern); Phase 6
--- adds organisation-scoped roles on top of this.
-CREATE OR REPLACE FUNCTION public.current_workspace_role(ws uuid)
-RETURNS text
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT role
-  FROM public.memberships
-  WHERE workspace_id = ws
-    AND user_id = auth.uid()
-  LIMIT 1
-$$;
+-- NOTE: current_workspace_role(ws) is defined AFTER public.memberships is
+-- created (section 4 below), because LANGUAGE sql functions are validated at
+-- CREATE time and need their referenced tables to already exist.
 
 -- set_updated_at() — universal trigger function for updated_at columns.
 CREATE OR REPLACE FUNCTION public.set_updated_at()
@@ -101,6 +86,26 @@ ALTER TABLE public.memberships ENABLE ROW LEVEL SECURITY;
 CREATE POLICY memberships_self_read ON public.memberships
   FOR SELECT
   USING (user_id = auth.uid());
+
+-- current_workspace_role(ws) — STABLE SECURITY DEFINER helper for RLS.
+-- Returns the calling user's role in the given workspace, or NULL.
+-- Uses a direct WHERE filter (NO `IN (SELECT ...)` anti-pattern); Phase 6
+-- adds organisation-scoped roles on top of this.
+-- Defined HERE (not in the helpers section) because LANGUAGE sql functions
+-- are validated at CREATE time and reference public.memberships above.
+CREATE OR REPLACE FUNCTION public.current_workspace_role(ws uuid)
+RETURNS text
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT role
+  FROM public.memberships
+  WHERE workspace_id = ws
+    AND user_id = auth.uid()
+  LIMIT 1
+$$;
 
 -- Policy on workspaces references current_workspace_role(), which reads
 -- memberships. Define here once memberships exists.
