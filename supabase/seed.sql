@@ -1,0 +1,5 @@
+-- Maxytest seed data
+-- Phase 1: intentionally empty.
+-- Reserved for future fixture inserts (e.g., demo workspaces, sample studies)
+-- once auth.users can be created from seed. Plans 01-03..01-05 may populate
+-- this with smoke-test data once the runner exists.
