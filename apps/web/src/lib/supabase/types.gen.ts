@@ -365,44 +365,88 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      current_workspace_role: { Args: { ws: string }; Returns: string }
       create_study: {
-        Args: { ws_id: string; study_title?: string }
+        Args: { study_title?: string; ws_id: string }
         Returns: string
       }
-      insert_block_at: {
-        Args: {
-          p_study_id: string
-          p_position: number
-          p_type: string
-          p_content: Json
-          p_idempotency_key: string
-        }
-        Returns: Database["public"]["Tables"]["blocks"]["Row"]
-      }
+      current_workspace_role: { Args: { ws: string }; Returns: string }
       delete_block: {
         Args: { p_block_id: string; p_idempotency_key: string }
         Returns: undefined
       }
       duplicate_block: {
         Args: { p_block_id: string; p_idempotency_key: string }
-        Returns: Database["public"]["Tables"]["blocks"]["Row"]
+        Returns: {
+          content: Json
+          created_at: string
+          id: string
+          pinned: boolean
+          position: number
+          study_id: string
+          type: string
+          updated_at: string
+          version: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "blocks"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      force_update_block: {
+        Args: { p_block_id: string; p_content: Json; p_idempotency_key: string }
+        Returns: {
+          content: Json
+          created_at: string
+          id: string
+          pinned: boolean
+          position: number
+          study_id: string
+          type: string
+          updated_at: string
+          version: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "blocks"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      insert_block_at: {
+        Args: {
+          p_content: Json
+          p_idempotency_key: string
+          p_position: number
+          p_study_id: string
+          p_type: string
+        }
+        Returns: {
+          content: Json
+          created_at: string
+          id: string
+          pinned: boolean
+          position: number
+          study_id: string
+          type: string
+          updated_at: string
+          version: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "blocks"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       reorder_blocks: {
         Args: {
-          p_study_id: string
-          p_ordered_block_ids: string[]
           p_idempotency_key: string
+          p_ordered_block_ids: string[]
+          p_study_id: string
         }
         Returns: undefined
-      }
-      force_update_block: {
-        Args: {
-          p_block_id: string
-          p_content: Json
-          p_idempotency_key: string
-        }
-        Returns: Database["public"]["Tables"]["blocks"]["Row"]
       }
     }
     Enums: {
