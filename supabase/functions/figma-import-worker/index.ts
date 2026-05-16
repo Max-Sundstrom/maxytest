@@ -300,10 +300,17 @@ function findNodeById(doc: FigmaNode | undefined, id: string): FigmaNode | undef
 // HTTP response helpers
 // -----------------------------------------------------------------------------
 
+const CORS_HEADERS: Record<string, string> = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-methods': 'POST, OPTIONS',
+  'access-control-allow-headers': 'authorization, apikey, content-type, x-client-info',
+  'access-control-max-age': '86400',
+};
+
 function jsonResponse(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...CORS_HEADERS },
   });
 }
 
@@ -312,6 +319,10 @@ function jsonResponse(body: unknown, status: number): Response {
 // -----------------------------------------------------------------------------
 
 Deno.serve(async (req: Request): Promise<Response> => {
+  // CORS preflight — browsers send OPTIONS before any POST from a different origin.
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
+  }
   if (req.method !== 'POST') {
     return jsonResponse({ error: 'method_not_allowed' }, 405);
   }
