@@ -92,7 +92,7 @@ export type Database = {
           pinned: boolean
           position: number
           study_id: string
-          type: string
+          type: 'welcome' | 'open_question' | 'thanks' | 'prototype'
           updated_at: string
           version: number
         }
@@ -103,7 +103,7 @@ export type Database = {
           pinned?: boolean
           position: number
           study_id: string
-          type: string
+          type: 'welcome' | 'open_question' | 'thanks' | 'prototype'
           updated_at?: string
           version?: number
         }
@@ -114,7 +114,7 @@ export type Database = {
           pinned?: boolean
           position?: number
           study_id?: string
-          type?: string
+          type?: 'welcome' | 'open_question' | 'thanks' | 'prototype'
           updated_at?: string
           version?: number
         }
