@@ -3,6 +3,7 @@ import { Outlet, createRootRoute } from '@tanstack/react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/sonner';
 import { Button } from '@/components/ui/button';
+import { TooltipProvider } from '@/components/ui/tooltip';
 
 /**
  * Single QueryClient instance for the app.
@@ -65,10 +66,12 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, AppErrorBounda
 function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
-      <AppErrorBoundary>
-        <Outlet />
-      </AppErrorBoundary>
-      <Toaster richColors position="bottom-right" theme="light" />
+      <TooltipProvider>
+        <AppErrorBoundary>
+          <Outlet />
+        </AppErrorBoundary>
+        <Toaster richColors position="bottom-right" theme="light" />
+      </TooltipProvider>
     </QueryClientProvider>
   );
 }
