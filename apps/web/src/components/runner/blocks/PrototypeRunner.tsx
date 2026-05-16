@@ -103,7 +103,7 @@ export function PrototypeRunner({ block, sessionId, onComplete }: PrototypeRunne
         'set_session_prototype_pin' as never,
         {
           p_session_id: sessionId,
-          p_prototype_version_id: pvId,
+          p_pv_id: pvId,
         } as never,
       );
       if (abort) return;
