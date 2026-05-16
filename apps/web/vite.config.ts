@@ -68,7 +68,17 @@ export default defineConfig({
     // Plan 01-06 Task 2 adds tests/e2e/*.spec.ts for Playwright. Those are
     // not vitest cases — exclude the e2e directory so vitest doesn't try to
     // run Playwright-shaped specs.
-    include: ['src/**/*.{test,spec}.{ts,tsx}', 'tests/**/*.{test,spec}.{ts,tsx}'],
+    //
+    // Plan 02-03 Task 3 adds integration tests for the figma-import-worker
+    // Edge Function under supabase/functions/figma-import-worker/*.test.ts.
+    // The test harness runs in Node (talks to the deployed function via HTTP)
+    // so it lives alongside the function source — the include glob below
+    // walks up to ../../supabase to pick it up.
+    include: [
+      'src/**/*.{test,spec}.{ts,tsx}',
+      'tests/**/*.{test,spec}.{ts,tsx}',
+      '../../supabase/functions/**/*.{test,spec}.{ts,tsx}',
+    ],
     exclude: ['**/node_modules/**', '**/dist/**', 'tests/e2e/**'],
   },
 });
