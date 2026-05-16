@@ -58,6 +58,12 @@ const FRAME_SOFT_CAP = 50;
 const IMAGES_BATCH_SIZE = 25; // RESEARCH.md A2 — batch /v1/images ids to keep wall-clock safe
 const SIZE_WARN_2X_BYTES = 250 * 1024; // Pitfall 3
 const SIZE_WARN_1X_BYTES = 80 * 1024; // Pitfall 3
+// Phase 02.1 / D-01d — hard cap on the JSON.stringify size of the *trimmed*
+// figma_node_tree before persistence. After D-01a (allowlist trim) cuts a
+// typical file by ~5×, any remaining file that still exceeds 50 MB is
+// pathologically deep and we fail fast with a specific error code rather
+// than risk OOMing again on the UPDATE round-trip.
+const FIGMA_TREE_HARD_CAP_BYTES = 50 * 1024 * 1024;
 const UUID_REGEX = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 const FIGMA_SHARE_LINK_RE =
   /https:\/\/[\w.-]+\.?figma\.com\/(proto|design|file)\/([0-9a-zA-Z]{22,128})(?:\/[^?]*)?(\?.*)?$/;
@@ -751,58 +757,57 @@ async function processImport(supabase: SupabaseClient, args: ProcessArgs): Promi
         return;
       }
 
-      // Pitfall 11 — S3 URLs expire ~30 min, so download IMMEDIATELY.
-      const [buf1x, buf2x] = await Promise.all([
-        fetch(url1x).then((r) => {
-          if (!r.ok) throw new Error(`png download 1x ${r.status}`);
-          return r.arrayBuffer();
-        }),
-        fetch(url2x).then((r) => {
-          if (!r.ok) throw new Error(`png download 2x ${r.status}`);
-          return r.arrayBuffer();
-        }),
-      ]);
+      // D-01b (Phase 02.1) — streaming per-scale upload. The previous
+      // implementation downloaded the 1x and 2x PNGs concurrently (one
+      // promise per scale, awaited together) which kept BOTH byte buffers
+      // in scope for the duration of BOTH uploads. For a 50-frame file
+      // that's ~30+ MB of external (Buffer) memory alive at once,
+      // contributing to the OOM observed on 2026-05-16.
+      //
+      // The pattern below keeps at most ONE PNG buffer in scope: fetch →
+      // size-check → hash → upload → release → repeat for the next scale.
+      // `buf` is reassigned to `null` after each upload so the previous
+      // ArrayBuffer becomes unreachable and GC can reclaim it before the
+      // next fetch allocates. Frame-level progress (`framesDone` +
+      // Realtime broadcast) fires ONCE per frame after both scales upload —
+      // matches the pre-refactor contract.
+      let path1x = '';
+      let path2x = '';
+      for (const scale of [1, 2] as const) {
+        const url = scale === 1 ? url1x : url2x;
+        const r = await fetch(url);
+        if (!r.ok) throw new Error(`png download ${scale}x ${r.status}`);
+        // Hold the buffer in a let-binding so we can null it out after upload.
+        let buf: ArrayBuffer | null = await r.arrayBuffer();
 
-      // Pitfall 3 — size warnings
-      if (buf2x.byteLength > SIZE_WARN_2X_BYTES) {
-        warnings.push({
-          code: 'png_2x_oversize',
-          frame_id: frame.id,
-          bytes: buf2x.byteLength,
-        });
-      }
-      if (buf1x.byteLength > SIZE_WARN_1X_BYTES) {
-        warnings.push({
-          code: 'png_1x_oversize',
-          frame_id: frame.id,
-          bytes: buf1x.byteLength,
-        });
-      }
+        // Pitfall 3 — size warning per scale.
+        const warnThreshold = scale === 1 ? SIZE_WARN_1X_BYTES : SIZE_WARN_2X_BYTES;
+        if (buf.byteLength > warnThreshold) {
+          warnings.push({
+            code: scale === 1 ? 'png_1x_oversize' : 'png_2x_oversize',
+            frame_id: frame.id,
+            bytes: buf.byteLength,
+          });
+        }
 
-      const hash1x = await sha256_16(buf1x);
-      const hash2x = await sha256_16(buf2x);
-      const path1x = `${workspaceId}/${prototypeVersionId}/${frame.id}-${hash1x}@1x.png`;
-      const path2x = `${workspaceId}/${prototypeVersionId}/${frame.id}-${hash2x}@2x.png`;
+        const hash = await sha256_16(buf);
+        const path = `${workspaceId}/${prototypeVersionId}/${frame.id}-${hash}@${scale}x.png`;
 
-      const up1x = await supabase.storage
-        .from(STORAGE_BUCKET)
-        .upload(path1x, new Uint8Array(buf1x), {
-          contentType: 'image/png',
-          upsert: false,
-        });
-      if (up1x.error && !/already exists|duplicate/i.test(up1x.error.message)) {
-        await failJob('storage_upload_failed', `1x upload: ${up1x.error.message}`);
-        return;
-      }
-      const up2x = await supabase.storage
-        .from(STORAGE_BUCKET)
-        .upload(path2x, new Uint8Array(buf2x), {
-          contentType: 'image/png',
-          upsert: false,
-        });
-      if (up2x.error && !/already exists|duplicate/i.test(up2x.error.message)) {
-        await failJob('storage_upload_failed', `2x upload: ${up2x.error.message}`);
-        return;
+        const upRes = await supabase.storage
+          .from(STORAGE_BUCKET)
+          .upload(path, new Uint8Array(buf), {
+            contentType: 'image/png',
+            upsert: false,
+          });
+        // Release the buffer reference immediately so the next iteration's
+        // fetch doesn't pile on a second large allocation.
+        buf = null;
+        if (upRes.error && !/already exists|duplicate/i.test(upRes.error.message)) {
+          await failJob('storage_upload_failed', `${scale}x upload: ${upRes.error.message}`);
+          return;
+        }
+        if (scale === 1) path1x = path;
+        else path2x = path;
       }
 
       uploaded.push({ frame, path1x, path2x });
@@ -935,12 +940,35 @@ async function processImport(supabase: SupabaseClient, args: ProcessArgs): Promi
     }
 
     // i.4 Flip prototype_versions to 'complete' + populate figma_node_tree.
+    //
+    // D-01a — persist the TRIMMED document tree (not the verbatim Figma
+    // response). This drops paint/effect/styles/components maps that used
+    // to balloon the heap during the round-trip.
+    //
+    // D-01d — hard cap on the trimmed JSON size. If even the trimmed tree
+    // exceeds 50 MB we abort with `figma_tree_too_large` instead of
+    // shipping a payload large enough to risk OOMing the UPDATE itself.
+    // The error_code is the FigmaImportDialog's friendly-map lookup key
+    // (Plan 02.1-04 will add the localized copy).
     {
+      const trimmedDocument = trimFigmaDocument(figmaFile);
+      const trimmedJsonLength = JSON.stringify(trimmedDocument).length;
+      if (trimmedJsonLength > FIGMA_TREE_HARD_CAP_BYTES) {
+        await supabase
+          .from('prototype_versions')
+          .update({ status: 'failed' })
+          .eq('id', prototypeVersionId);
+        await failJob(
+          'figma_tree_too_large',
+          `Trimmed Figma tree is ${trimmedJsonLength} bytes after stripping; exceeds ${FIGMA_TREE_HARD_CAP_BYTES} byte hard cap. Try a smaller file or fewer external library components.`,
+        );
+        return;
+      }
       const { error: pvUpdateErr } = await supabase
         .from('prototype_versions')
         .update({
           status: 'complete',
-          figma_node_tree: figmaFile.document as unknown as Record<string, unknown> | null,
+          figma_node_tree: trimmedDocument as unknown as Record<string, unknown> | null,
         })
         .eq('id', prototypeVersionId);
       if (pvUpdateErr) {
