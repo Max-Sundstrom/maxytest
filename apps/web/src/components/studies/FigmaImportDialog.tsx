@@ -40,7 +40,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { useImportPrototype, ImportPrototypeError } from '@/lib/queries/prototypes';
-import { useImportJob, type PrototypeImport } from '@/lib/queries/imports';
+import { useImportJob, isLikelyStalled, type PrototypeImport } from '@/lib/queries/imports';
 import { parseFigmaShareLink } from '@/lib/figma/parse-share-link';
 
 export interface FigmaImportDialogProps {
@@ -136,9 +136,18 @@ function errorMessageFromCode(code: string | null, fallback: string | null): str
       return 'This Figma file is too large to import. It contains many library components or deeply-nested groups. Try a smaller file or one without external library references.';
     case 'unhandled':
       return 'Something went wrong during import. The import job is recorded — retry to attempt again.';
+    // ─── Outer-try-catch fallback (Phase 02.1 / D-04b) ────────────────────
+    // The figma-import-worker's Deno.serve outer catch PATCHes the row with
+    // `error_code='unknown_error'` when a crash bypasses processImport's
+    // inner failJob (OOM-adjacent timeout, malformed Figma response,
+    // synchronous throw before the inner try starts). The friendly copy is
+    // intentionally distinct from `unhandled` — `unhandled` means the inner
+    // catch ran and recorded a known cause; `unknown_error` means even the
+    // inner catch was bypassed.
+    case 'unknown_error':
+      return "Something went wrong during import and the worker couldn't record a specific cause. The import job is recorded — retry to attempt again.";
     // ─── Default / unknown ────────────────────────────────────────────────
     case 'unknown':
-    case 'unknown_error':
     case null:
     default:
       return fallback ?? 'Import failed. Try again or check your token.';
@@ -393,6 +402,17 @@ interface ImportProgressProps {
 function ImportProgress({ job, progressPct }: ImportProgressProps) {
   const warnings = Array.isArray(job.warnings) ? job.warnings : [];
 
+  // Phase 02.1 / D-04c — stalled-import banner trigger. Non-terminal rows
+  // that haven't refreshed `updated_at` in over 60 seconds are very likely
+  // crashed (the Edge Function writes updated_at on every per-frame progress
+  // broadcast — a healthy import refreshes every few seconds). The banner is
+  // amber (warning, not error) because the DB row hasn't officially flipped
+  // to `failed` yet; we're inferring a probable crash. The outer try/catch
+  // from Task 1 of this plan eventually PATCHes such rows to
+  // `status='failed', error_code='unknown_error'` — at which point the
+  // errorBody branch below takes over and this stalled banner stops firing.
+  const stalled = isLikelyStalled(job);
+
   // D-04a — surface BOTH the friendly code label AND the raw server message
   // when both exist. The friendly text is the human-readable lead; the raw
   // server text is the diagnostic detail (smaller, mono-font) so users can
@@ -434,6 +454,19 @@ function ImportProgress({ job, progressPct }: ImportProgressProps) {
         aria-valuemax={job.frames_total}
         role="progressbar"
       />
+
+      {stalled && (
+        <div
+          role="alert"
+          className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+        >
+          <p className="font-medium">Import appears stalled</p>
+          <p className="mt-1 text-xs text-amber-800/80">
+            We haven't received progress from the import worker in over 60 seconds — it likely
+            crashed. Close this dialog and retry the import.
+          </p>
+        </div>
+      )}
 
       {job.status === 'partial' && (
         <div
