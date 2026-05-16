@@ -51,6 +51,14 @@ export function BlockCatalogPanel({ studyId, workspaceId }: BlockCatalogPanelPro
   const insertPosition = thanksIdx >= 0 ? thanksIdx : blocks.length;
 
   const handleAdd = (type: BlockType) => {
+    if (addMutation.isPending) {
+      // [02.1-03] D-03 — double-click guard. The CatalogRow's disabled prop
+      // already prevents most double-clicks, but a fast double-tap on touch
+      // devices or a focused-row Enter-Enter sequence can still fire two
+      // handleAdd calls before React commits the disabled state. The
+      // mutation seam is the authoritative gate.
+      return;
+    }
     let payload: Parameters<typeof addMutation.mutate>[0] | null = null;
     if (type === 'open_question') {
       payload = { position: insertPosition, type: 'open_question', content: OPEN_QUESTION_DEFAULT };
