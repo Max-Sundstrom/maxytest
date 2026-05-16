@@ -19,7 +19,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { BLOCK_CATEGORIES, BLOCK_REGISTRY, type BlockCategory } from '@/lib/blocks/registry';
 import type { BlockType } from '@/lib/blocks/types';
-import { OPEN_QUESTION_DEFAULT } from '@/lib/blocks/defaults';
+import { OPEN_QUESTION_DEFAULT, PROTOTYPE_DEFAULT_PARTIAL } from '@/lib/blocks/defaults';
 import { useAddBlock } from '@/lib/queries/blocks';
 import { useBuilderStore } from '@/lib/stores/builder';
 import { useUiStore } from '@/lib/stores/ui';
@@ -51,24 +51,30 @@ export function BlockCatalogPanel({ studyId, workspaceId }: BlockCatalogPanelPro
   const insertPosition = thanksIdx >= 0 ? thanksIdx : blocks.length;
 
   const handleAdd = (type: BlockType) => {
-    if (type !== 'open_question') return; // Defensive — disabled rows can't trigger.
-
-    addMutation.mutate(
-      {
+    let payload: Parameters<typeof addMutation.mutate>[0] | null = null;
+    if (type === 'open_question') {
+      payload = { position: insertPosition, type: 'open_question', content: OPEN_QUESTION_DEFAULT };
+    } else if (type === 'prototype') {
+      // PROTOTYPE_DEFAULT_PARTIAL omits prototype_version_id and starting_frame_id
+      // by design — the PrototypeEditor's Figma import flow stamps them once the
+      // first import completes. Cast bypasses the TS exhaustiveness check at the
+      // catalog seam; the server-side INSERT still passes `prototypeContentSchema`
+      // validation once those fields are populated.
+      payload = {
         position: insertPosition,
-        type: 'open_question',
-        content: OPEN_QUESTION_DEFAULT,
+        type: 'prototype',
+        content: PROTOTYPE_DEFAULT_PARTIAL as Parameters<typeof addMutation.mutate>[0]['content'],
+      };
+    }
+    if (!payload) return;
+
+    addMutation.mutate(payload, {
+      onSuccess: () => setOpen(false),
+      onError: (err: unknown) => {
+        const message = err instanceof Error ? err.message : 'Try again in a moment.';
+        toast.error("Couldn't add the block", { description: message });
       },
-      {
-        onSuccess: () => {
-          setOpen(false);
-        },
-        onError: (err: unknown) => {
-          const message = err instanceof Error ? err.message : 'Try again in a moment.';
-          toast.error("Couldn't add the block", { description: message });
-        },
-      },
-    );
+    });
   };
 
   return (
@@ -104,7 +110,10 @@ export function BlockCatalogPanel({ studyId, workspaceId }: BlockCatalogPanelPro
                         key={type}
                         type={type}
                         onAdd={handleAdd}
-                        isPending={addMutation.isPending && type === 'open_question'}
+                        isPending={
+                          addMutation.isPending &&
+                          (type === 'open_question' || type === 'prototype')
+                        }
                       />
                     ))}
                   </ul>

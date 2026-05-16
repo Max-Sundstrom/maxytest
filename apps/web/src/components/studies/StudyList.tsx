@@ -116,6 +116,17 @@ export function StudyList({ studies, workspaceId }: StudyListProps) {
                     Open
                   </DropdownMenuItem>
 
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      navigate({
+                        to: '/studies/$id/report',
+                        params: { id: study.id },
+                      })
+                    }
+                  >
+                    View report
+                  </DropdownMenuItem>
+
                   {study.status === 'published' && (
                     <DropdownMenuItem
                       onSelect={() => moveToDraft.mutate({ studyId: study.id, workspaceId })}
