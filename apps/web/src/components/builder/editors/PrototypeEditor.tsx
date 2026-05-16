@@ -140,10 +140,35 @@ export function PrototypeEditor({ block, disabled, onSave, serverVersion }: Prot
   useEffect(() => {
     if (disabled) return;
     const parsed = prototypeContentSchema.safeParse(debounced);
+    // [02.1-02] PROBE SITE 4 — autosave effect entry. Logs the debounced
+    // candidate, parse result, and concurrency-relevant version fields so we
+    // can correlate this fire against PROBE 1/2 (Re-import setValue snapshots)
+    // and PROBE 5 (actual onSave payload). The `as any` cast is intentional
+    // and temporary — `debounced` is `DraftContent` so individual fields are
+    // `unknown | undefined`; Task 3 cleans this up if needed.
+    console.log('[02.1-02] autosave effect fired', {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      debouncedPvId: (debounced as any)?.prototype_version_id,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      debouncedStartFrame: (debounced as any)?.starting_frame_id,
+      parseSuccess: parsed.success,
+      lastSavedRef: lastSavedRef.current.slice(0, 80),
+      serverVersion,
+      blockVersion: block.version,
+    });
     if (!parsed.success) return;
     const serialised = JSON.stringify(parsed.data);
     if (serialised === lastSavedRef.current) return;
 
+    // [02.1-02] PROBE SITE 5 — autosave onSave payload. Logs IMMEDIATELY
+    // before onSave so we capture the exact payload + version handed to the
+    // mutation. Idempotency key value is never logged (D-13 trace hygiene).
+    console.log('[02.1-02] autosave onSave payload', {
+      contentPvId: parsed.data.prototype_version_id,
+      contentStartFrame: parsed.data.starting_frame_id,
+      version: serverVersion,
+      idempotencyKey: 'present — uuidv7 generated inline; never log value',
+    });
     onSave({
       content: parsed.data,
       version: serverVersion,
@@ -290,6 +315,19 @@ export function PrototypeEditor({ block, disabled, onSave, serverVersion }: Prot
           onOpenChange={setImportOpen}
           studyId={block.study_id}
           onComplete={(newPvId) => {
+            // [02.1-02] PROBE SITE 3 — first-import onComplete entry.
+            // Included for comparison: the first-import path is known good;
+            // diverging behaviour vs. PROBE 1 on the populated state path is
+            // a signal that the bug is specific to Re-import wiring.
+            console.log('[02.1-02] first-import onComplete entry', {
+              newPvId,
+              currentPvId: form.getValues('prototype_version_id'),
+              currentStartingFrame: form.getValues('starting_frame_id'),
+              blockVersion: block.version,
+              serverVersion,
+              formDirty: form.formState.isDirty,
+              formDirtyFields: Object.keys(form.formState.dirtyFields),
+            });
             form.setValue('prototype_version_id', newPvId, { shouldDirty: true });
             // starting_frame_id auto-selected once frames load via the
             // useEffect above.
@@ -556,6 +594,19 @@ export function PrototypeEditor({ block, disabled, onSave, serverVersion }: Prot
         onOpenChange={setImportOpen}
         studyId={block.study_id}
         onComplete={(newPvId) => {
+          // [02.1-02] PROBE SITE 1 — re-import onComplete entry. Snapshots
+          // the full state at the moment FigmaImportDialog hands us a fresh
+          // pvId. Pair with PROBE 2 (post-setValue) to detect H3 dirty-merge
+          // and with PROBE 4 (autosave effect) to detect H2 debounce-race.
+          console.log('[02.1-02] reimport onComplete entry', {
+            newPvId,
+            currentPvId: form.getValues('prototype_version_id'),
+            currentStartingFrame: form.getValues('starting_frame_id'),
+            blockVersion: block.version,
+            serverVersion,
+            formDirty: form.formState.isDirty,
+            formDirtyFields: Object.keys(form.formState.dirtyFields),
+          });
           // Re-import: stamp the new pvId. Clear starting frame so the
           // auto-select effect re-runs with the new frame catalog
           // (D-06 remap — frame ids may differ between snapshots).
@@ -563,6 +614,14 @@ export function PrototypeEditor({ block, disabled, onSave, serverVersion }: Prot
           form.setValue('starting_frame_id', '', { shouldDirty: true });
           form.setValue('success_path', [], { shouldDirty: true });
           form.setValue('finish_frame_ids', [], { shouldDirty: true });
+          // [02.1-02] PROBE SITE 2 — re-import post-setValue. Captures the
+          // form snapshot AFTER all four setValue calls so we can confirm
+          // RHF actually merged the new pvId into watched/dirtied state.
+          console.log('[02.1-02] reimport onComplete post-setValue', {
+            newFormValues: form.getValues(),
+            formDirty: form.formState.isDirty,
+            formDirtyFields: Object.keys(form.formState.dirtyFields),
+          });
         }}
       />
     </Form>
