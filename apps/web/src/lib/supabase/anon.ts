@@ -22,3 +22,30 @@ export const supabaseAnon = createClient<Database>(
     },
   },
 );
+
+/**
+ * Return the current cached anon access token, if any. Returns `null` on
+ * missing-session, getSession error, or thrown exceptions — never throws.
+ *
+ * Plan 02-08 W-05: EventBuffer's pagehide handler used to parse
+ * `localStorage['maxytest-runner-auth']` JSON directly to set the
+ * `Authorization` header on `fetch keepalive` / `sendBeacon`. That coupled
+ * the buffer to supabase-js's internal storage shape, which is allowed to
+ * change between minor versions. This helper isolates the coupling to one
+ * well-tested function.
+ *
+ * Implementation: supabase-js caches the session in memory after the first
+ * `getSession()` call; subsequent calls are effectively synchronous (Map
+ * lookup). We `await` it anyway so the helper is typed
+ * `Promise<string | null>` — callers in fast-paths can chain `.then(...)`
+ * without an extra microtask penalty in the cached case.
+ */
+export async function getCurrentAnonAccessToken(): Promise<string | null> {
+  try {
+    const { data, error } = await supabaseAnon.auth.getSession();
+    if (error) return null;
+    return data.session?.access_token ?? null;
+  } catch {
+    return null;
+  }
+}
