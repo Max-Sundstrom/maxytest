@@ -34,6 +34,7 @@ import { SaveStateIndicator, type SaveState } from './SaveStateIndicator';
 import { WelcomeEditor } from './editors/WelcomeEditor';
 import { OpenQuestionEditor } from './editors/OpenQuestionEditor';
 import { ThanksEditor } from './editors/ThanksEditor';
+import { PrototypeEditor } from './editors/PrototypeEditor';
 
 export interface BlockCardProps {
   block: Block;
@@ -147,6 +148,13 @@ export function BlockCard({ block, index, studyId, workspaceId }: BlockCardProps
       />
     ) : block.type === 'open_question' ? (
       <OpenQuestionEditor
+        block={block}
+        disabled={isConflict}
+        onSave={handleSave}
+        serverVersion={block.version}
+      />
+    ) : block.type === 'prototype' ? (
+      <PrototypeEditor
         block={block}
         disabled={isConflict}
         onSave={handleSave}
