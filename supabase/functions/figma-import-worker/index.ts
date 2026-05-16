@@ -442,6 +442,9 @@ export async function handler(req: Request): Promise<Response> {
   }
 
   // 1. Env --------------------------------------------------------------------
+  // Pre-try early returns: OPTIONS / method / env validation. These MUST NOT
+  // be remapped to `unknown_error` by the outer catch — they are structured
+  // error responses for malformed/unauthorized callers, not internal crashes.
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   if (!supabaseUrl || !serviceRoleKey) {
@@ -449,149 +452,191 @@ export async function handler(req: Request): Promise<Response> {
     return jsonResponse({ error: 'configuration_missing' }, 500);
   }
 
-  // 2. Parse + validate body -------------------------------------------------
-  let body: ImportRequest;
+  // ─── Outer try/catch (Phase 02.1 / D-04b) ────────────────────────────────
+  // Defense-in-depth around the handler scope. The inner `processImport`
+  // already has its own try/catch (lines ~1065+) that calls `failJob('unhandled', …)`
+  // for errors WITHIN the background work. The outer catch here fires for
+  // errors that bypass the inner one entirely — e.g. an OOM-adjacent timeout
+  // during body parse, a synchronous throw from `processImport()` before its
+  // own try/catch starts, or a `waitUntil` scheduling failure. Without this
+  // wrapper, such crashes leave the `prototype_imports` row stuck in `pending`
+  // forever and the user sees a forever-spinner.
+  //
+  // The catch's job is to PATCH the row with `error_code='unknown_error'` +
+  // the exception message before re-throwing as a 500. This requires us to
+  // capture `importId` and `supabase` in outer-scope variables that survive
+  // until the catch runs. We can only PATCH a row that EXISTS — if we crash
+  // before the INSERT, importId stays null and we just return a 500.
+  let importId: string | null = null;
+  let supabase: SupabaseClient | null = null;
   try {
-    const raw = (await req.json()) as Partial<ImportRequest>;
-    const missing: string[] = [];
-    if (typeof raw.share_link !== 'string' || raw.share_link.length === 0)
-      missing.push('share_link');
-    if (typeof raw.pat !== 'string' || raw.pat.length === 0) missing.push('pat');
-    if (typeof raw.study_id !== 'string' || !UUID_REGEX.test(raw.study_id))
-      missing.push('study_id');
-    if (typeof raw.idempotency_key !== 'string' || !UUID_REGEX.test(raw.idempotency_key))
-      missing.push('idempotency_key');
-    if (missing.length > 0) {
-      return jsonResponse({ error: 'bad_request', missing }, 400);
-    }
-    body = raw as ImportRequest;
-  } catch {
-    return jsonResponse({ error: 'bad_request', missing: ['<malformed json>'] }, 400);
-  }
-
-  // 3. Parse share link → file_key -------------------------------------------
-  const parsed = parseShareLinkServer(body.share_link);
-  if (!parsed) {
-    return jsonResponse({ error: 'invalid_share_link' }, 400);
-  }
-  const fileKey = parsed.file_key;
-
-  // 4. Service-role client ----------------------------------------------------
-  const supabase = createClient(supabaseUrl, serviceRoleKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-
-  // 5. Resolve target study + workspace --------------------------------------
-  const { data: study, error: studyErr } = await supabase
-    .from('studies')
-    .select('id, workspace_id')
-    .eq('id', body.study_id)
-    .maybeSingle();
-  if (studyErr) {
-    console.error('figma-import-worker: studies lookup failed', { code: studyErr.code });
-    return jsonResponse({ error: 'study_lookup_failed' }, 500);
-  }
-  if (!study) {
-    return jsonResponse({ error: 'study_not_found' }, 404);
-  }
-  const workspaceId = study.workspace_id;
-
-  // 6. W-08: workspace-membership gate ---------------------------------------
-  const callerSub = parseJwtSub(req.headers.get('authorization'));
-  if (!callerSub) {
-    return jsonResponse({ error: 'unauthenticated' }, 401);
-  }
-  const { data: member, error: memberErr } = await supabase
-    .from('memberships')
-    .select('role')
-    .eq('workspace_id', workspaceId)
-    .eq('user_id', callerSub)
-    .in('role', ['owner', 'editor'])
-    .maybeSingle();
-  if (memberErr) {
-    console.error('figma-import-worker: membership lookup failed', { code: memberErr.code });
-    return jsonResponse({ error: 'membership_lookup_failed' }, 500);
-  }
-  if (!member) {
-    return jsonResponse({ error: 'workspace_membership_required' }, 403);
-  }
-
-  // 7. INSERT prototype_imports — idempotent ---------------------------------
-  let importId: string;
-  {
-    const { data: insertedJob, error: insertErr } = await supabase
-      .from('prototype_imports')
-      .insert({
-        study_id: body.study_id,
-        actor_id: callerSub,
-        idempotency_key: body.idempotency_key,
-        figma_file_key: fileKey,
-        status: 'pending',
-        frames_total: 0,
-        frames_done: 0,
-      })
-      .select('id')
-      .single();
-
-    if (insertErr) {
-      // 23505 = UNIQUE (study_id, idempotency_key) — retry of same logical op
-      if (insertErr.code === '23505') {
-        const { data: existing, error: selectErr } = await supabase
-          .from('prototype_imports')
-          .select('id')
-          .eq('study_id', body.study_id)
-          .eq('idempotency_key', body.idempotency_key)
-          .single();
-        if (selectErr || !existing) {
-          console.error('figma-import-worker: idempotent SELECT failed', {
-            code: selectErr?.code,
-          });
-          return jsonResponse({ error: 'import_insert_failed' }, 500);
-        }
-        importId = existing.id;
-        console.log('figma-import-worker idempotent retry', { importId, fileKey });
-        return jsonResponse({ import_id: importId }, 202);
-      }
-      console.error('figma-import-worker: import INSERT failed', { code: insertErr.code });
-      return jsonResponse({ error: 'import_insert_failed' }, 500);
-    }
-    importId = insertedJob!.id;
-  }
-
-  console.log('figma-import-worker accepted', { importId, fileKey, workspaceId });
-
-  // 8. Background processing -------------------------------------------------
-  const work = processImport(supabase, {
-    importId,
-    fileKey,
-    pat: body.pat,
-    studyId: body.study_id,
-    workspaceId,
-  });
-
-  // `EdgeRuntime` is the Supabase Deno runtime's background-task hook. When
-  // it's present, we return 202 immediately and let the work continue. When
-  // it's not (e.g. local Deno tests), we await synchronously so callers see
-  // the final state on completion.
-  const er = (
-    globalThis as unknown as {
-      EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void };
-    }
-  ).EdgeRuntime;
-  if (er && typeof er.waitUntil === 'function') {
-    er.waitUntil(work.catch((e) => console.error('figma-import-worker: background error', e)));
-  } else {
-    // Fallback: await synchronously. This may hit the 150s wall-clock budget
-    // for large files, but it's the right behaviour for local-dev / tests
-    // where there is no background task runtime.
+    // 2. Parse + validate body -------------------------------------------------
+    let body: ImportRequest;
     try {
-      await work;
-    } catch (e) {
-      console.error('figma-import-worker: sync error', e);
+      const raw = (await req.json()) as Partial<ImportRequest>;
+      const missing: string[] = [];
+      if (typeof raw.share_link !== 'string' || raw.share_link.length === 0)
+        missing.push('share_link');
+      if (typeof raw.pat !== 'string' || raw.pat.length === 0) missing.push('pat');
+      if (typeof raw.study_id !== 'string' || !UUID_REGEX.test(raw.study_id))
+        missing.push('study_id');
+      if (typeof raw.idempotency_key !== 'string' || !UUID_REGEX.test(raw.idempotency_key))
+        missing.push('idempotency_key');
+      if (missing.length > 0) {
+        return jsonResponse({ error: 'bad_request', missing }, 400);
+      }
+      body = raw as ImportRequest;
+    } catch {
+      return jsonResponse({ error: 'bad_request', missing: ['<malformed json>'] }, 400);
     }
-  }
 
-  return jsonResponse({ import_id: importId }, 202);
+    // 3. Parse share link → file_key -------------------------------------------
+    const parsed = parseShareLinkServer(body.share_link);
+    if (!parsed) {
+      return jsonResponse({ error: 'invalid_share_link' }, 400);
+    }
+    const fileKey = parsed.file_key;
+
+    // 4. Service-role client ----------------------------------------------------
+    // Assign to OUTER `supabase` so the catch block can issue the PATCH.
+    supabase = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
+    // 5. Resolve target study + workspace --------------------------------------
+    const { data: study, error: studyErr } = await supabase
+      .from('studies')
+      .select('id, workspace_id')
+      .eq('id', body.study_id)
+      .maybeSingle();
+    if (studyErr) {
+      console.error('figma-import-worker: studies lookup failed', { code: studyErr.code });
+      return jsonResponse({ error: 'study_lookup_failed' }, 500);
+    }
+    if (!study) {
+      return jsonResponse({ error: 'study_not_found' }, 404);
+    }
+    const workspaceId = study.workspace_id;
+
+    // 6. W-08: workspace-membership gate ---------------------------------------
+    const callerSub = parseJwtSub(req.headers.get('authorization'));
+    if (!callerSub) {
+      return jsonResponse({ error: 'unauthenticated' }, 401);
+    }
+    const { data: member, error: memberErr } = await supabase
+      .from('memberships')
+      .select('role')
+      .eq('workspace_id', workspaceId)
+      .eq('user_id', callerSub)
+      .in('role', ['owner', 'editor'])
+      .maybeSingle();
+    if (memberErr) {
+      console.error('figma-import-worker: membership lookup failed', { code: memberErr.code });
+      return jsonResponse({ error: 'membership_lookup_failed' }, 500);
+    }
+    if (!member) {
+      return jsonResponse({ error: 'workspace_membership_required' }, 403);
+    }
+
+    // 7. INSERT prototype_imports — idempotent ---------------------------------
+    {
+      const { data: insertedJob, error: insertErr } = await supabase
+        .from('prototype_imports')
+        .insert({
+          study_id: body.study_id,
+          actor_id: callerSub,
+          idempotency_key: body.idempotency_key,
+          figma_file_key: fileKey,
+          status: 'pending',
+          frames_total: 0,
+          frames_done: 0,
+        })
+        .select('id')
+        .single();
+
+      if (insertErr) {
+        // 23505 = UNIQUE (study_id, idempotency_key) — retry of same logical op
+        if (insertErr.code === '23505') {
+          const { data: existing, error: selectErr } = await supabase
+            .from('prototype_imports')
+            .select('id')
+            .eq('study_id', body.study_id)
+            .eq('idempotency_key', body.idempotency_key)
+            .single();
+          if (selectErr || !existing) {
+            console.error('figma-import-worker: idempotent SELECT failed', {
+              code: selectErr?.code,
+            });
+            return jsonResponse({ error: 'import_insert_failed' }, 500);
+          }
+          // Idempotent happy-path return — assign to outer importId for
+          // completeness (the catch won't fire on a return) and exit cleanly.
+          importId = existing.id;
+          console.log('figma-import-worker idempotent retry', { importId, fileKey });
+          return jsonResponse({ import_id: importId }, 202);
+        }
+        console.error('figma-import-worker: import INSERT failed', { code: insertErr.code });
+        return jsonResponse({ error: 'import_insert_failed' }, 500);
+      }
+      // Assign to OUTER importId so the catch block can locate the row to PATCH.
+      importId = insertedJob!.id;
+    }
+
+    console.log('figma-import-worker accepted', { importId, fileKey, workspaceId });
+
+    // 8. Background processing -------------------------------------------------
+    const work = processImport(supabase, {
+      importId: importId!,
+      fileKey,
+      pat: body.pat,
+      studyId: body.study_id,
+      workspaceId,
+    });
+
+    // `EdgeRuntime` is the Supabase Deno runtime's background-task hook. When
+    // it's present, we return 202 immediately and let the work continue. When
+    // it's not (e.g. local Deno tests), we await synchronously so callers see
+    // the final state on completion.
+    const er = (
+      globalThis as unknown as {
+        EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void };
+      }
+    ).EdgeRuntime;
+    if (er && typeof er.waitUntil === 'function') {
+      er.waitUntil(work.catch((e) => console.error('figma-import-worker: background error', e)));
+    } else {
+      // Fallback: await synchronously. This may hit the 150s wall-clock budget
+      // for large files, but it's the right behaviour for local-dev / tests
+      // where there is no background task runtime.
+      try {
+        await work;
+      } catch (e) {
+        console.error('figma-import-worker: sync error', e);
+      }
+    }
+
+    return jsonResponse({ import_id: importId }, 202);
+  } catch (err) {
+    // Outer-scope catch: a crash bypassed the inner `processImport` try/catch
+    // OR happened before processImport was reached at all. PATCH the row with
+    // `unknown_error` + the exception message so the frontend stops spinning
+    // and shows a specific diagnostic. The friendly copy for `unknown_error`
+    // is added to FigmaImportDialog's errorMessageFromCode map in Plan 02.1-04
+    // Task 3.
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('figma-import-worker: outer_try_catch caught', { importId, message });
+    if (importId && supabase) {
+      try {
+        await supabase
+          .from('prototype_imports')
+          .update({ status: 'failed', error_code: 'unknown_error', error_message: message })
+          .eq('id', importId);
+      } catch (patchErr) {
+        console.error('figma-import-worker: outer_try_catch PATCH failed', patchErr);
+      }
+    }
+    return jsonResponse({ error: 'internal_error', message }, 500);
+  }
 }
 
 // Only bind the network socket when this module is the entrypoint (i.e. when
