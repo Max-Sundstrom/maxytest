@@ -79,6 +79,16 @@ export default defineConfig({
       'tests/**/*.{test,spec}.{ts,tsx}',
       '../../supabase/functions/**/*.{test,spec}.{ts,tsx}',
     ],
-    exclude: ['**/node_modules/**', '**/dist/**', 'tests/e2e/**'],
+    // Plan 02.1-01 added supabase/functions/figma-import-worker/trim.test.ts which
+    // is a Deno test (uses `https://deno.land/std@...` URL imports). Vitest can't
+    // resolve those URLs — exclude it explicitly. The deno-only convention is
+    // `*.deno.test.ts` going forward; legacy `trim.test.ts` is excluded by name.
+    exclude: [
+      '**/node_modules/**',
+      '**/dist/**',
+      'tests/e2e/**',
+      '../../supabase/functions/**/trim.test.ts',
+      '../../supabase/functions/**/*.deno.test.ts',
+    ],
   },
 });
