@@ -92,7 +92,11 @@ describe('EventBuffer', () => {
     // Microtask + macrotask drain so the void flush() Promise resolves.
     await new Promise((r) => setTimeout(r, 0));
     expect(rpc).toHaveBeenCalledTimes(1);
-    const [rpcName, args] = rpc.mock.calls[0];
+    const firstCall = rpc.mock.calls[0] as [
+      string,
+      { p_events: unknown[] } & Record<string, unknown>,
+    ];
+    const [rpcName, args] = firstCall;
     expect(rpcName).toBe('submit_events');
     expect(args).toMatchObject({
       p_session_id: SESSION_ID,
@@ -114,7 +118,8 @@ describe('EventBuffer', () => {
     // Advance the wall clock by the flush interval.
     await vi.advanceTimersByTimeAsync(1000);
     expect(rpc).toHaveBeenCalledTimes(1);
-    expect(rpc.mock.calls[0][1].p_events).toHaveLength(2);
+    const args = rpc.mock.calls[0]?.[1] as { p_events: unknown[] };
+    expect(args.p_events).toHaveLength(2);
     buf.dispose();
   });
 
@@ -160,7 +165,8 @@ describe('EventBuffer', () => {
 
     expect(getCurrentAnonAccessToken).toHaveBeenCalled();
     expect(fetchSpy).toHaveBeenCalled();
-    const fetchInit = fetchSpy.mock.calls[0][1] as RequestInit;
+    const fetchCall = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
+    const fetchInit = fetchCall[1];
     expect((fetchInit.headers as Record<string, string>).Authorization).toBe(
       'Bearer mock.access.token',
     );
@@ -221,8 +227,8 @@ describe('EventBuffer', () => {
     expect(persisted).not.toBeNull();
     const parsed = JSON.parse(persisted!) as QueuedEvent[];
     expect(parsed).toHaveLength(2);
-    expect(parsed[0].frame_id).toBe('f-a');
-    expect(parsed[1].frame_id).toBe('f-b');
+    expect(parsed[0]?.frame_id).toBe('f-a');
+    expect(parsed[1]?.frame_id).toBe('f-b');
 
     buf.dispose();
 
