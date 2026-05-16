@@ -135,10 +135,10 @@ describe('BLOCK_REGISTRY', () => {
     expect(entry.disabledTooltip).toBe('Coming in Phase 4');
   });
 
-  it('prototype ships in Phase 2 with the locked tooltip and Smartphone icon', () => {
+  it('prototype is enabled in Phase 1 (active as of Plan 02-05) with Smartphone icon', () => {
     const entry = BLOCK_REGISTRY['prototype'];
-    expect(entry.enabledInPhase).toBe(2);
-    expect(entry.disabledTooltip).toBe('Coming in Phase 2');
+    expect(entry.enabledInPhase).toBe(1);
+    expect(entry.disabledTooltip).toBeUndefined();
     expect(entry.icon).toBe(Smartphone);
   });
 

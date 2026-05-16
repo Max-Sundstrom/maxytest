@@ -39,16 +39,45 @@ export const thanksContentSchema = z.object({
 });
 
 /**
- * Discriminated union of all Phase 1 block content shapes.
+ * Phase 2 — flagship "prototype" block (BLK-12, PROTO-12..14, CONTEXT.md D-10).
+ *
+ * `prototype_version_id` references an immutable `prototype_versions` row
+ * created by the Figma import flow (Plan 02-03). Until the designer imports,
+ * the block is "incomplete" and BlockCard renders an "Import Figma prototype"
+ * CTA (the `PROTOTYPE_DEFAULT_PARTIAL` factory in `defaults.ts` is intentionally
+ * missing this field — see CONTEXT.md D-10 lines 173-185).
+ *
+ * `starting_frame_id` is the Figma node id of the frame the runner shows first.
+ * `task_instruction` is the "what should the respondent do?" copy (≤280 chars,
+ * mirroring `open_question.question` to keep the editor familiar).
+ * `success_path` / `finish_frame_ids` are optional analytics annotations the
+ * editor will surface in Plan 02-06.
+ */
+export const prototypeContentSchema = z.object({
+  type: z.literal('prototype'),
+  prototype_version_id: z.string().uuid('A prototype must be imported first.'),
+  starting_frame_id: z.string().min(1, 'Pick a starting frame.'),
+  task_instruction: z
+    .string()
+    .min(1, 'Task instruction is required.')
+    .max(280, 'Task instruction must be 280 characters or fewer.'),
+  success_path: z.array(z.string()).optional(),
+  finish_frame_ids: z.array(z.string()).optional(),
+});
+
+/**
+ * Discriminated union of all currently-shipping block content shapes.
  * Zod narrows on `type` so `parse({type:'welcome',...})` returns `WelcomeContent`.
  */
 export const blockContentSchema = z.discriminatedUnion('type', [
   welcomeContentSchema,
   openQuestionContentSchema,
   thanksContentSchema,
+  prototypeContentSchema,
 ]);
 
 export type WelcomeContent = z.infer<typeof welcomeContentSchema>;
 export type OpenQuestionContent = z.infer<typeof openQuestionContentSchema>;
 export type ThanksContent = z.infer<typeof thanksContentSchema>;
+export type PrototypeContent = z.infer<typeof prototypeContentSchema>;
 export type BlockContent = z.infer<typeof blockContentSchema>;
