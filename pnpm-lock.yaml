@@ -107,6 +107,9 @@ importers:
       react-hook-form:
         specifier: 7.75.0
         version: 7.75.0(react@19.2.6)
+      simpleheat:
+        specifier: 0.4.0
+        version: 0.4.0
       sonner:
         specifier: 2.0.7
         version: 2.0.7(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -159,6 +162,9 @@ importers:
       '@types/react-dom':
         specifier: ^19.2.3
         version: 19.2.3(@types/react@19.2.14)
+      '@types/simpleheat':
+        specifier: 0.4.3
+        version: 0.4.3
       '@vitejs/plugin-react':
         specifier: ^5.2.0
         version: 5.2.0(vite@7.3.3(@types/node@25.8.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.47.1)(yaml@2.9.0))
@@ -2475,6 +2481,9 @@ packages:
   '@types/set-cookie-parser@2.4.10':
     resolution: {integrity: sha512-GGmQVGpQWUe5qglJozEjZV/5dyxbOOZ0LHe/lqyWssB88Y4svNfst0uqBVscdDeIKl5Jy5+aPSvy7mI9tYRguw==}
 
+  '@types/simpleheat@0.4.3':
+    resolution: {integrity: sha512-E83XPXcdHTNA/BiNZ6FxSMrTIuHv+gfCjf+dccJu8S6miHSuCeIti4S2lAHCsqm1SC2OKRGKaVvayICTa2RpLg==}
+
   '@types/statuses@2.0.6':
     resolution: {integrity: sha512-xMAgYwceFhRA2zY+XbEA7mxYbA093wdiW8Vu6gZPGWy9cmOyU9XesH1tNcEWsKFd5Vzrqx5T3D38PWx1FIIXkA==}
 
@@ -4579,6 +4588,9 @@ packages:
   signal-exit@4.1.0:
     resolution: {integrity: sha512-bzyZ1e88w9O1iNJbKnOlvYTrWPDl46O1bG0D3XInv+9tkPrxrN8jUUTiFlDkkmKWgn1M6CfIA13SuGqOa9Korw==}
     engines: {node: '>=14'}
+
+  simpleheat@0.4.0:
+    resolution: {integrity: sha512-tdg3I1NvzMdPKscWBrHbF0LBf+VWuBBazzGUPtFJjG5Q12VQX6gPY8jLy9hx5CbgAIVc5nfnePwJvAYK6z1rAA==}
 
   sisteransi@1.0.5:
     resolution: {integrity: sha512-bLGGlR1QxBcynn2d5YmDX4MGjlZvy2MRBDRNHLJ8VI6l6+9FUiyTFNJ0IveOSP0bcXgVDPRcfGqA0pjaqUpfVg==}
@@ -7678,6 +7690,8 @@ snapshots:
     dependencies:
       '@types/node': 25.8.0
 
+  '@types/simpleheat@0.4.3': {}
+
   '@types/statuses@2.0.6': {}
 
   '@types/trusted-types@2.0.7': {}
@@ -9987,6 +10001,8 @@ snapshots:
   signal-exit@3.0.7: {}
 
   signal-exit@4.1.0: {}
+
+  simpleheat@0.4.0: {}
 
   sisteransi@1.0.5: {}
 
