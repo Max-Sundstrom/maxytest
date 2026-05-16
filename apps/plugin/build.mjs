@@ -60,12 +60,21 @@ const codeOpts = {
 };
 
 // 2. Bundle ui.tsx → JS string in memory for HTML inlining.
+//
+// `jsx: 'automatic'` matches tsconfig.ui.json (`"jsx": "react-jsx"`) so esbuild
+// emits `import { jsx as _jsx } from 'react/jsx-runtime'` calls instead of the
+// classic `React.createElement(...)` form that would require `import React
+// from 'react'` in every JSX file. Without this option the smoke UI bundle
+// throws `Uncaught ReferenceError: React is not defined` at runtime in the
+// Figma iframe — the heading would partial-render before the error halts
+// the rest of the tree (Task 4 deviation, second iteration).
 const uiOpts = {
   entryPoints: [resolve(__dirname, 'src/ui.tsx')],
   bundle: true,
   format: 'iife',
   target: 'es2017',
   platform: 'browser',
+  jsx: 'automatic',
   write: false, // hand back the JS as a string for HTML inlining
   define: defineEnv,
 };
