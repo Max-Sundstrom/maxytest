@@ -101,3 +101,23 @@ enable_confirmations = false
 # token TTL is governed here. Dashboard override recommended for production.)
 otp_expiry = 3600
 otp_length = 6
+
+# =============================================================================
+# figma-import-worker — memory configuration (Phase 02.1 / D-01c)
+# =============================================================================
+# Bumps the Edge Function memory ceiling from the platform default (256 MB on
+# Free tier, 256 MB on Pro tier unless overridden) to 512 MB. This is a
+# defensive margin AFTER the D-01a (figma_node_tree trim) and D-01b (streaming
+# uploads) mitigations land — they cut memory usage by ~5x on typical files,
+# but the absolute ceiling matters for pathologically large Figma documents.
+#
+# Free tier: this setting is silently rejected; the function continues to run
+# at the 256 MB platform default. No harm.
+# Pro tier: function runs with 512 MB ceiling.
+# Self-host (docker compose): respects this value via the Supabase Edge
+# Runtime container; operator's local machine RAM is the only ceiling.
+#
+# Source: see .planning/phases/02.1-.../02.1-CONTEXT.md decision D-01c.
+# =============================================================================
+[functions.figma-import-worker]
+memory_limit_mb = 512
