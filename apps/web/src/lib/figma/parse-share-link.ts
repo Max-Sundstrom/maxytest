@@ -33,7 +33,10 @@ export function parseFigmaShareLink(url: string): ParsedFigmaShareLink | null {
   const match = FIGMA_URL_RE.exec(url);
   if (!match) return null;
 
-  const file_key = match[2];
+  // match[2] is guaranteed to be defined when match is truthy (regex has 3
+  // capture groups and the second is required). The non-null assertion is for
+  // noUncheckedIndexedAccess; the regex contract guarantees this.
+  const file_key = match[2]!;
 
   // Extract query params via WHATWG URL — wrapped in try/catch because
   // `new URL(url)` throws TypeError on malformed input. The regex already
