@@ -87,7 +87,7 @@ interface FigmaInteraction {
   }>;
 }
 
-interface FigmaNode {
+export interface FigmaNode {
   id: string;
   name?: string;
   type?: string;
@@ -99,9 +99,10 @@ interface FigmaNode {
   overlayPositionType?: string | null;
   isFixed?: boolean;
   isOverlay?: boolean;
+  prototypeStartNodeID?: string | null;
 }
 
-interface FigmaFileResponse {
+export interface FigmaFileResponse {
   name?: string;
   lastModified?: string;
   document?: FigmaNode & { prototypeStartNodeID?: string | null };
@@ -207,7 +208,7 @@ function mapTransition(t?: { type?: string } | null): TransitionKind {
 /** Depth-first walk over the document tree collecting FRAME nodes that sit
  *  directly under a CANVAS (top-level frames). Returns in DFS order — preserves
  *  the designer's page/section layout. */
-function collectFrames(doc: FigmaNode | undefined): FrameCatalog[] {
+export function collectFrames(doc: FigmaNode | undefined): FrameCatalog[] {
   const out: FrameCatalog[] = [];
   if (!doc) return out;
   let position = 0;
@@ -297,6 +298,106 @@ function findNodeById(doc: FigmaNode | undefined, id: string): FigmaNode | undef
 }
 
 // -----------------------------------------------------------------------------
+// figma_node_tree trim — D-01a (Phase 02.1 / Plan 01 / Task 1)
+// -----------------------------------------------------------------------------
+//
+// The /v1/files response shipped to `prototype_versions.figma_node_tree` used
+// to be the verbatim Figma document — hundreds of MB of paint/effect/styles
+// for files with library components. This trim drops everything downstream
+// consumers don't read. The re-import remap pass reads ONLY frame ids,
+// interactions, and bounding boxes; the runner reads PNG renders, not the
+// tree. See `.planning/phases/02.1-.../02.1-CONTEXT.md` decision D-01a for
+// the authoritative spec.
+//
+// IMPORTANT: this is an ALLOWLIST. New Figma API fields are dropped by default
+// until someone reviews them and decides they're worth keeping. That is the
+// load-bearing security property — `trimFigmaTree` cannot leak fields it
+// doesn't explicitly know about.
+//
+// The "keep" list (mirrored in the schema below as `KEEP_KEYS`):
+//   - id, name, type
+//   - absoluteBoundingBox (full bbox preserved — hotspot remap math)
+//   - prototypeInteractions, interactions (re-import remap reads these)
+//   - transitionNodeID, overlayPositionType, isOverlay (navigation metadata)
+//   - prototypeStartNodeID (document-root field for the starting frame)
+//   - children (recursively trimmed)
+// -----------------------------------------------------------------------------
+
+/** The set of node keys that survive `trimFigmaTree`. Anything not on this
+ *  list is dropped. */
+const TRIM_KEEP_KEYS: ReadonlyArray<keyof FigmaNode> = [
+  'id',
+  'name',
+  'type',
+  'absoluteBoundingBox',
+  'prototypeInteractions',
+  'interactions',
+  'transitionNodeID',
+  'overlayPositionType',
+  'isOverlay',
+  'prototypeStartNodeID',
+];
+
+/**
+ * Recursively walk a Figma node tree and return a NEW object containing only
+ * the allowlisted keys plus a recursively-trimmed `children` array.
+ *
+ * Defensive contract:
+ *   - `undefined` input → `null` output (matches the "no document" code path).
+ *   - Does NOT mutate the input.
+ *   - Idempotent: `trimFigmaTree(trimFigmaTree(x))` deep-equals `trimFigmaTree(x)`.
+ *
+ * Re-import remap depends on `prototypeInteractions` surviving verbatim, so
+ * the array is preserved by reference (interaction items are not deep-copied
+ * field-by-field — the array itself is kept as-is, which is what the remap
+ * read pass expects).
+ */
+export function trimFigmaTree(node: FigmaNode | undefined): FigmaNode | null {
+  if (!node) return null;
+  const src = node as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const key of TRIM_KEEP_KEYS) {
+    if (src[key] !== undefined) {
+      out[key] = src[key];
+    }
+  }
+  // Recurse into children — drop nulls (children that returned null because
+  // they were themselves undefined; doesn't happen in practice but is the
+  // type-safe filter).
+  if (Array.isArray(node.children)) {
+    out.children = node.children
+      .map((c) => trimFigmaTree(c))
+      .filter((n): n is FigmaNode => n !== null);
+  }
+  return out as FigmaNode;
+}
+
+/**
+ * Trim a Figma /v1/files response down to ONLY the three top-level fields
+ * downstream code reads — `name`, `lastModified`, and a trimmed `document`.
+ *
+ * Explicitly drops the top-level `components`, `componentSets`, `styles`,
+ * `schemaVersion`, `version`, `mainFileKey`, `branches`, `thumbnailUrl`, and
+ * any other sibling fields. These can be tens of MB for files with library
+ * components and are NEVER read by either the runner or the re-import remap.
+ *
+ * The result is what gets persisted to `prototype_versions.figma_node_tree`.
+ */
+export function trimFigmaDocument(file: FigmaFileResponse): {
+  name?: string;
+  lastModified?: string;
+  document: FigmaNode | null;
+} {
+  const trimmedDoc = trimFigmaTree(file.document);
+  const out: { name?: string; lastModified?: string; document: FigmaNode | null } = {
+    document: trimmedDoc,
+  };
+  if (typeof file.name === 'string') out.name = file.name;
+  if (typeof file.lastModified === 'string') out.lastModified = file.lastModified;
+  return out;
+}
+
+// -----------------------------------------------------------------------------
 // HTTP response helpers
 // -----------------------------------------------------------------------------
 
@@ -318,7 +419,14 @@ function jsonResponse(body: unknown, status: number): Response {
 // Main entrypoint
 // -----------------------------------------------------------------------------
 
-Deno.serve(async (req: Request): Promise<Response> => {
+/**
+ * Main HTTP handler. Exported so unit tests can import this module without
+ * triggering `Deno.serve` (which would try to bind a port and crash the test
+ * runner under `--allow-env --no-check`). The Supabase Edge Runtime invokes
+ * the module as the entrypoint, so `import.meta.main === true` there and we
+ * call `Deno.serve` at the bottom of the file.
+ */
+export async function handler(req: Request): Promise<Response> {
   // CORS preflight — browsers send OPTIONS before any POST from a different origin.
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: CORS_HEADERS });
@@ -478,7 +586,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   return jsonResponse({ import_id: importId }, 202);
-});
+}
+
+// Only bind the network socket when this module is the entrypoint (i.e. when
+// the Supabase Edge Runtime invokes it). Unit tests that import this module
+// for the pure helpers will leave `import.meta.main` false and skip serving.
+if (import.meta.main) {
+  Deno.serve(handler);
+}
 
 // -----------------------------------------------------------------------------
 // processImport — the heavy lifting (B-05 ordering)
