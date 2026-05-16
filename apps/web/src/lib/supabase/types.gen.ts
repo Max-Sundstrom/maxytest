@@ -128,6 +128,86 @@ export type Database = {
           },
         ]
       }
+      events: {
+        Row: {
+          block_id: string
+          client_ts: string
+          event_type: 'tap' | 'frame_enter' | 'frame_exit' | 'task_finish'
+          frame_id: string
+          hit_target_id: string | null
+          hotspot_id: string | null
+          id: string
+          prototype_version_id: string
+          seq: number
+          server_ts: string
+          session_id: string
+          study_id: string
+          x: number | null
+          y: number | null
+        }
+        Insert: {
+          block_id: string
+          client_ts: string
+          event_type: 'tap' | 'frame_enter' | 'frame_exit' | 'task_finish'
+          frame_id: string
+          hit_target_id?: string | null
+          hotspot_id?: string | null
+          id: string
+          prototype_version_id: string
+          seq: number
+          server_ts?: string
+          session_id: string
+          study_id: string
+          x?: number | null
+          y?: number | null
+        }
+        Update: {
+          block_id?: string
+          client_ts?: string
+          event_type?: 'tap' | 'frame_enter' | 'frame_exit' | 'task_finish'
+          frame_id?: string
+          hit_target_id?: string | null
+          hotspot_id?: string | null
+          id?: string
+          prototype_version_id?: string
+          seq?: number
+          server_ts?: string
+          session_id?: string
+          study_id?: string
+          x?: number | null
+          y?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "events_block_id_fkey"
+            columns: ["block_id"]
+            isOneToOne: false
+            referencedRelation: "blocks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "events_prototype_version_id_fkey"
+            columns: ["prototype_version_id"]
+            isOneToOne: false
+            referencedRelation: "prototype_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "events_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "events_study_id_fkey"
+            columns: ["study_id"]
+            isOneToOne: false
+            referencedRelation: "studies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       frames: {
         Row: {
           frame_id: string
@@ -439,6 +519,7 @@ export type Database = {
           device_type: string | null
           id: string
           last_seen_at: string
+          prototype_version_pin: string | null
           respondent_id: string | null
           run_token: string
           session_token: string
@@ -452,6 +533,7 @@ export type Database = {
           device_type?: string | null
           id?: string
           last_seen_at?: string
+          prototype_version_pin?: string | null
           respondent_id?: string | null
           run_token: string
           session_token: string
@@ -465,6 +547,7 @@ export type Database = {
           device_type?: string | null
           id?: string
           last_seen_at?: string
+          prototype_version_pin?: string | null
           respondent_id?: string | null
           run_token?: string
           session_token?: string
@@ -474,6 +557,13 @@ export type Database = {
           user_agent?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "sessions_prototype_version_pin_fkey"
+            columns: ["prototype_version_pin"]
+            isOneToOne: false
+            referencedRelation: "prototype_versions"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "sessions_study_id_fkey"
             columns: ["study_id"]
@@ -696,6 +786,14 @@ export type Database = {
         Returns: undefined
       }
       restore_study: { Args: { study_uuid: string }; Returns: undefined }
+      set_session_prototype_pin: {
+        Args: { p_pv_id: string; p_session_id: string }
+        Returns: undefined
+      }
+      submit_events: {
+        Args: { p_block_id: string; p_events: Json; p_session_id: string }
+        Returns: number
+      }
       submit_response: {
         Args: {
           p_answer: Json
