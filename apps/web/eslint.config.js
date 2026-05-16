@@ -14,6 +14,10 @@
 //   - `SUPABASE_SERVICE_ROLE_KEY` must never appear in client bundle code.
 //     It lives in Edge Functions (supabase/functions/**) and tests/rls/setup.ts
 //     where the literal name is referenced for `process.env.SUPABASE_SERVICE_ROLE_KEY`.
+//
+// Phase 2 (Plan 02-01): extended runner-tree glob to cover PrototypeViewer/,
+// lib/queries/events.ts, lib/queries/prototypes-runner.ts (W-06), lib/runner/.
+// See RESEARCH.md Pitfall 6 — explicit Wave 1 task, never bundle later.
 
 import rootConfig from '../../eslint.config.js';
 import tseslint from 'typescript-eslint';
@@ -27,8 +31,12 @@ export default tseslint.config(
       'src/routes/_public.**',
       'src/routes/_public/**',
       'src/components/runner/**',
+      'src/components/runner/blocks/PrototypeViewer/**',
       'src/lib/queries/sessions.ts',
       'src/lib/queries/responses.ts',
+      'src/lib/queries/events.ts',
+      'src/lib/queries/prototypes-runner.ts',
+      'src/lib/runner/**',
       'src/lib/stores/runner.ts',
     ],
     rules: {
