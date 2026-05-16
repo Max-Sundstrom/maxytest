@@ -5,11 +5,23 @@
     <meta name="viewport" content="width=360, initial-scale=1" />
     <title>Maxytest</title>
     <style>
-      html,
-      body {
+      /*
+       * Task 4 deviation (Rule 1 — bug fix): defensive global reset so the
+       * smoke UI renders predictably inside the Figma plugin iframe even if
+       * Figma injects user-agent styles that would otherwise hide the
+       * paragraph or the Close button. KISS — no normalize.css.
+       */
+      * {
+        box-sizing: border-box;
         margin: 0;
         padding: 0;
+      }
+      html,
+      body {
+        height: 100%;
+        min-height: 540px;
         background: #ffffff;
+        color: #18181b;
       }
       body {
         font-family:
