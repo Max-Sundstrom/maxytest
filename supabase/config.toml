@@ -118,6 +118,13 @@ otp_length = 6
 # Runtime container; operator's local machine RAM is the only ceiling.
 #
 # Source: see .planning/phases/02.1-.../02.1-CONTEXT.md decision D-01c.
+#
+# 2026-05-16 update: supabase CLI 2.98.2 rejects the `memory_limit_mb` key as
+# "invalid". Either the key was renamed/removed in the Supabase config schema
+# or it's a Pro-only/preview feature gated behind a flag not yet documented.
+# Commented out below; reinstate when CLI supports it. D-01a (trim tree) +
+# D-01b (streaming) + D-01d (50 MB hard cap) cut memory by ~5x and are
+# sufficient on their own.
 # =============================================================================
-[functions.figma-import-worker]
-memory_limit_mb = 512
+# [functions.figma-import-worker]
+# memory_limit_mb = 512
