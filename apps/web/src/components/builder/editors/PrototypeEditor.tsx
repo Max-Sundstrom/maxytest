@@ -134,6 +134,13 @@ export function PrototypeEditor({ block, disabled, onSave, serverVersion }: Prot
   const debounced = useDebouncedValue(watched, 700);
   const lastSavedRef = useRef<string>(JSON.stringify(block.content));
 
+  // [02.1-02] D-02 conservative fix: when Re-import lands, we bypass the
+  // 700ms debounce and write the new prototype_version_id immediately via
+  // the auto-select effect; this ref carries the pending intent across the
+  // React render boundary between onComplete and the next frames-arrived
+  // effect run. Consumed (nulled) once the immediate save fires.
+  const pendingReimportRef = useRef<{ newPvId: string; version: number } | null>(null);
+
   // Autosave: ONLY fires when the debounced value satisfies the FULL
   // prototype schema. Partial states (no import yet, no starting frame) are
   // held back so the DB row never goes invalid (T-02-06-01).
@@ -146,16 +153,18 @@ export function PrototypeEditor({ block, disabled, onSave, serverVersion }: Prot
     // and PROBE 5 (actual onSave payload). The `as any` cast is intentional
     // and temporary — `debounced` is `DraftContent` so individual fields are
     // `unknown | undefined`; Task 3 cleans this up if needed.
-    console.log('[02.1-02] autosave effect fired', {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      debouncedPvId: (debounced as any)?.prototype_version_id,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      debouncedStartFrame: (debounced as any)?.starting_frame_id,
-      parseSuccess: parsed.success,
-      lastSavedRef: lastSavedRef.current.slice(0, 80),
-      serverVersion,
-      blockVersion: block.version,
-    });
+    if (import.meta.env.DEV) {
+      console.log('[02.1-02] autosave effect fired', {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        debouncedPvId: (debounced as any)?.prototype_version_id,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        debouncedStartFrame: (debounced as any)?.starting_frame_id,
+        parseSuccess: parsed.success,
+        lastSavedRef: lastSavedRef.current.slice(0, 80),
+        serverVersion,
+        blockVersion: block.version,
+      });
+    }
     if (!parsed.success) return;
     const serialised = JSON.stringify(parsed.data);
     if (serialised === lastSavedRef.current) return;
@@ -163,12 +172,14 @@ export function PrototypeEditor({ block, disabled, onSave, serverVersion }: Prot
     // [02.1-02] PROBE SITE 5 — autosave onSave payload. Logs IMMEDIATELY
     // before onSave so we capture the exact payload + version handed to the
     // mutation. Idempotency key value is never logged (D-13 trace hygiene).
-    console.log('[02.1-02] autosave onSave payload', {
-      contentPvId: parsed.data.prototype_version_id,
-      contentStartFrame: parsed.data.starting_frame_id,
-      version: serverVersion,
-      idempotencyKey: 'present — uuidv7 generated inline; never log value',
-    });
+    if (import.meta.env.DEV) {
+      console.log('[02.1-02] autosave onSave payload', {
+        contentPvId: parsed.data.prototype_version_id,
+        contentStartFrame: parsed.data.starting_frame_id,
+        version: serverVersion,
+        idempotencyKey: 'present — uuidv7 generated inline; never log value',
+      });
+    }
     onSave({
       content: parsed.data,
       version: serverVersion,
@@ -238,11 +249,58 @@ export function PrototypeEditor({ block, disabled, onSave, serverVersion }: Prot
 
   // -------------------------------------------------------------------------
   // Auto-select first frame once frames arrive (after a fresh import).
+  //
+  // [02.1-02] D-02 conservative fix: when a Re-import is pending, we ALSO
+  // fire an immediate non-debounced save here, bypassing the 700ms autosave
+  // debounce. This eliminates the H2 race window (debounce-race) and writes
+  // the new prototype_version_id straight to the DB. If a ConflictError
+  // races (H1), the standard BlockCard conflict UI fires via useUpdateBlock
+  // — no silent rollback.
   // -------------------------------------------------------------------------
 
   useEffect(() => {
     if (pvId && frames.length > 0 && !startingFrame) {
-      form.setValue('starting_frame_id', frames[0]!.frame_id, { shouldDirty: true });
+      const firstFrame = frames[0]!.frame_id;
+      form.setValue('starting_frame_id', firstFrame, { shouldDirty: true });
+
+      const pending = pendingReimportRef.current;
+      if (pending && pending.newPvId === pvId) {
+        // Assemble the canonical payload the schema expects. task_instruction
+        // is preserved from current form state — the designer's mid-edit
+        // text survives the Re-import (desired UX, addresses H3 dirty-merge).
+        const payload = {
+          type: 'prototype' as const,
+          prototype_version_id: pvId,
+          starting_frame_id: firstFrame,
+          task_instruction: form.getValues('task_instruction') ?? '',
+          success_path: [] as string[],
+          finish_frame_ids: [] as string[],
+        };
+        const parsed = prototypeContentSchema.safeParse(payload);
+        if (parsed.success) {
+          if (import.meta.env.DEV) {
+            console.log('[02.1-02] reimport immediate save', {
+              pvId,
+              firstFrame,
+              version: pending.version,
+            });
+          }
+          onSave({
+            content: parsed.data,
+            version: pending.version,
+            idempotencyKey: uuidv7(),
+          });
+          // Mirror the debounced autosave's bookkeeping so the next
+          // debounced fire with the same serialized payload short-circuits.
+          lastSavedRef.current = JSON.stringify(parsed.data);
+          updateLocal(block.id, parsed.data);
+        }
+        // Consume the pending intent regardless of parse outcome — if the
+        // payload didn't parse, the debounced autosave will retry once
+        // task_instruction et al. settle. Keeping the ref live would risk
+        // double-firing the immediate save on a subsequent effect run.
+        pendingReimportRef.current = null;
+      }
     }
   }, [pvId, frames.length, startingFrame]);
 
@@ -319,15 +377,17 @@ export function PrototypeEditor({ block, disabled, onSave, serverVersion }: Prot
             // Included for comparison: the first-import path is known good;
             // diverging behaviour vs. PROBE 1 on the populated state path is
             // a signal that the bug is specific to Re-import wiring.
-            console.log('[02.1-02] first-import onComplete entry', {
-              newPvId,
-              currentPvId: form.getValues('prototype_version_id'),
-              currentStartingFrame: form.getValues('starting_frame_id'),
-              blockVersion: block.version,
-              serverVersion,
-              formDirty: form.formState.isDirty,
-              formDirtyFields: Object.keys(form.formState.dirtyFields),
-            });
+            if (import.meta.env.DEV) {
+              console.log('[02.1-02] first-import onComplete entry', {
+                newPvId,
+                currentPvId: form.getValues('prototype_version_id'),
+                currentStartingFrame: form.getValues('starting_frame_id'),
+                blockVersion: block.version,
+                serverVersion,
+                formDirty: form.formState.isDirty,
+                formDirtyFields: Object.keys(form.formState.dirtyFields),
+              });
+            }
             form.setValue('prototype_version_id', newPvId, { shouldDirty: true });
             // starting_frame_id auto-selected once frames load via the
             // useEffect above.
@@ -598,15 +658,17 @@ export function PrototypeEditor({ block, disabled, onSave, serverVersion }: Prot
           // the full state at the moment FigmaImportDialog hands us a fresh
           // pvId. Pair with PROBE 2 (post-setValue) to detect H3 dirty-merge
           // and with PROBE 4 (autosave effect) to detect H2 debounce-race.
-          console.log('[02.1-02] reimport onComplete entry', {
-            newPvId,
-            currentPvId: form.getValues('prototype_version_id'),
-            currentStartingFrame: form.getValues('starting_frame_id'),
-            blockVersion: block.version,
-            serverVersion,
-            formDirty: form.formState.isDirty,
-            formDirtyFields: Object.keys(form.formState.dirtyFields),
-          });
+          if (import.meta.env.DEV) {
+            console.log('[02.1-02] reimport onComplete entry', {
+              newPvId,
+              currentPvId: form.getValues('prototype_version_id'),
+              currentStartingFrame: form.getValues('starting_frame_id'),
+              blockVersion: block.version,
+              serverVersion,
+              formDirty: form.formState.isDirty,
+              formDirtyFields: Object.keys(form.formState.dirtyFields),
+            });
+          }
           // Re-import: stamp the new pvId. Clear starting frame so the
           // auto-select effect re-runs with the new frame catalog
           // (D-06 remap — frame ids may differ between snapshots).
@@ -617,11 +679,28 @@ export function PrototypeEditor({ block, disabled, onSave, serverVersion }: Prot
           // [02.1-02] PROBE SITE 2 — re-import post-setValue. Captures the
           // form snapshot AFTER all four setValue calls so we can confirm
           // RHF actually merged the new pvId into watched/dirtied state.
-          console.log('[02.1-02] reimport onComplete post-setValue', {
-            newFormValues: form.getValues(),
-            formDirty: form.formState.isDirty,
-            formDirtyFields: Object.keys(form.formState.dirtyFields),
-          });
+          if (import.meta.env.DEV) {
+            console.log('[02.1-02] reimport onComplete post-setValue', {
+              newFormValues: form.getValues(),
+              formDirty: form.formState.isDirty,
+              formDirtyFields: Object.keys(form.formState.dirtyFields),
+            });
+          }
+          // [02.1-02] D-02 conservative fix — capture the pending Re-import
+          // intent so the auto-select effect (which runs when the new pv's
+          // frames arrive) can fire an immediate non-debounced save with
+          // the canonical payload. Version is snapshotted at onComplete
+          // time so the immediate save's optimistic-concurrency check uses
+          // the version that was current when the user clicked "Use this
+          // prototype" — same semantics as the standard debounced autosave.
+          pendingReimportRef.current = { newPvId, version: serverVersion };
+          // Reset lastSavedRef so any stale debounced autosave scheduled
+          // with pre-onComplete content cannot short-circuit on the
+          // "serialised === lastSavedRef.current" guard once it fires — it
+          // will instead see the new debounced value as distinct from '',
+          // re-parse, and proceed correctly with the NEW content. Belt and
+          // suspenders against H2 (debounce-race).
+          lastSavedRef.current = '';
         }}
       />
     </Form>
