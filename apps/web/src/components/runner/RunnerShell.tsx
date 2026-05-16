@@ -33,6 +33,7 @@ import { RunnerProgressBar } from './RunnerProgressBar';
 import { WelcomeRunner } from './blocks/WelcomeRunner';
 import { OpenQuestionRunner } from './blocks/OpenQuestionRunner';
 import { ThanksRunner } from './blocks/ThanksRunner';
+import { PrototypeRunner } from './blocks/PrototypeRunner';
 
 export type RunnerMode = 'live' | 'preview';
 
@@ -175,6 +176,24 @@ function RunnerShellInner({
     advance();
   }
 
+  /**
+   * Plan 02-09 W-02: advance helper for blocks that do NOT submit an answer
+   * (the prototype block). Unlike handleQuestionSubmit, this does NOT call
+   * recordAnswer() and does NOT fire submitResponse.mutate. The prototype
+   * block produces events (Plan 02-08 submit_events) directly; advancing
+   * the runner just moves to the next block.
+   *
+   * Idempotent: if a tap-triggered auto-finish races with the explicit
+   * Finish-task button, both call paths land here with the same blockId
+   * (T-02-09-08 disposition: accept — duplicate calls are no-ops because
+   * we early-return when the currentBlock id mismatches OR the index has
+   * already advanced).
+   */
+  function handleBlockAdvance(blockId: string) {
+    if (!currentBlock || currentBlock.id !== blockId) return;
+    advance();
+  }
+
   function handleThanksRendered() {
     if (completedFlag) return;
     setCompletedFlag(true);
@@ -211,6 +230,13 @@ function RunnerShellInner({
               initialValue={
                 (answers[currentBlock.id]?.content as { text?: string } | undefined)?.text ?? ''
               }
+            />
+          )}
+          {currentBlock.type === 'prototype' && (
+            <PrototypeRunner
+              block={currentBlock}
+              sessionId={sessionId ?? null}
+              onComplete={() => handleBlockAdvance(currentBlock.id)}
             />
           )}
           {currentBlock.type === 'thanks' && (
