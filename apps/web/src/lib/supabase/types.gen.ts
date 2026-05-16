@@ -92,7 +92,7 @@ export type Database = {
           pinned: boolean
           position: number
           study_id: string
-          type: 'welcome' | 'open_question' | 'thanks' | 'prototype'
+          type: string
           updated_at: string
           version: number
         }
@@ -103,7 +103,7 @@ export type Database = {
           pinned?: boolean
           position: number
           study_id: string
-          type: 'welcome' | 'open_question' | 'thanks' | 'prototype'
+          type: string
           updated_at?: string
           version?: number
         }
@@ -114,7 +114,7 @@ export type Database = {
           pinned?: boolean
           position?: number
           study_id?: string
-          type?: 'welcome' | 'open_question' | 'thanks' | 'prototype'
+          type?: string
           updated_at?: string
           version?: number
         }
@@ -132,7 +132,7 @@ export type Database = {
         Row: {
           block_id: string
           client_ts: string
-          event_type: 'tap' | 'frame_enter' | 'frame_exit' | 'task_finish'
+          event_type: string
           frame_id: string
           hit_target_id: string | null
           hotspot_id: string | null
@@ -148,7 +148,7 @@ export type Database = {
         Insert: {
           block_id: string
           client_ts: string
-          event_type: 'tap' | 'frame_enter' | 'frame_exit' | 'task_finish'
+          event_type: string
           frame_id: string
           hit_target_id?: string | null
           hotspot_id?: string | null
@@ -164,7 +164,7 @@ export type Database = {
         Update: {
           block_id?: string
           client_ts?: string
-          event_type?: 'tap' | 'frame_enter' | 'frame_exit' | 'task_finish'
+          event_type?: string
           frame_id?: string
           hit_target_id?: string | null
           hotspot_id?: string | null
