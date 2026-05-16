@@ -128,6 +128,113 @@ export type Database = {
           },
         ]
       }
+      frames: {
+        Row: {
+          frame_id: string
+          height: number
+          id: string
+          name: string
+          position: number
+          prototype_version_id: string
+          render_path_1x: string
+          render_path_2x: string
+          width: number
+        }
+        Insert: {
+          frame_id: string
+          height: number
+          id?: string
+          name: string
+          position?: number
+          prototype_version_id: string
+          render_path_1x: string
+          render_path_2x: string
+          width: number
+        }
+        Update: {
+          frame_id?: string
+          height?: number
+          id?: string
+          name?: string
+          position?: number
+          prototype_version_id?: string
+          render_path_1x?: string
+          render_path_2x?: string
+          width?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "frames_prototype_version_id_fkey"
+            columns: ["prototype_version_id"]
+            isOneToOne: false
+            referencedRelation: "prototype_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hotspots: {
+        Row: {
+          bbox_h: number
+          bbox_w: number
+          bbox_x: number
+          bbox_y: number
+          figma_raw: Json
+          frame_id: string
+          hotspot_id: string
+          id: string
+          prototype_version_id: string
+          source_layer: string | null
+          target_frame_id: string | null
+          transition_kind: string
+          z_index: number
+        }
+        Insert: {
+          bbox_h: number
+          bbox_w: number
+          bbox_x: number
+          bbox_y: number
+          figma_raw?: Json
+          frame_id: string
+          hotspot_id: string
+          id?: string
+          prototype_version_id: string
+          source_layer?: string | null
+          target_frame_id?: string | null
+          transition_kind?: string
+          z_index?: number
+        }
+        Update: {
+          bbox_h?: number
+          bbox_w?: number
+          bbox_x?: number
+          bbox_y?: number
+          figma_raw?: Json
+          frame_id?: string
+          hotspot_id?: string
+          id?: string
+          prototype_version_id?: string
+          source_layer?: string | null
+          target_frame_id?: string | null
+          transition_kind?: string
+          z_index?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hotspots_frame_id_fkey"
+            columns: ["frame_id"]
+            isOneToOne: false
+            referencedRelation: "frames"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hotspots_prototype_version_id_fkey"
+            columns: ["prototype_version_id"]
+            isOneToOne: false
+            referencedRelation: "prototype_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       memberships: {
         Row: {
           created_at: string
@@ -160,6 +267,126 @@ export type Database = {
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      prototype_imports: {
+        Row: {
+          actor_id: string | null
+          created_at: string
+          error_code: string | null
+          error_message: string | null
+          figma_file_key: string
+          frames_done: number
+          frames_total: number
+          id: string
+          idempotency_key: string
+          prototype_version_id: string | null
+          status: string
+          study_id: string
+          updated_at: string
+          warnings: Json
+        }
+        Insert: {
+          actor_id?: string | null
+          created_at?: string
+          error_code?: string | null
+          error_message?: string | null
+          figma_file_key: string
+          frames_done?: number
+          frames_total?: number
+          id?: string
+          idempotency_key: string
+          prototype_version_id?: string | null
+          status?: string
+          study_id: string
+          updated_at?: string
+          warnings?: Json
+        }
+        Update: {
+          actor_id?: string | null
+          created_at?: string
+          error_code?: string | null
+          error_message?: string | null
+          figma_file_key?: string
+          frames_done?: number
+          frames_total?: number
+          id?: string
+          idempotency_key?: string
+          prototype_version_id?: string | null
+          status?: string
+          study_id?: string
+          updated_at?: string
+          warnings?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prototype_imports_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prototype_imports_prototype_version_id_fkey"
+            columns: ["prototype_version_id"]
+            isOneToOne: false
+            referencedRelation: "prototype_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prototype_imports_study_id_fkey"
+            columns: ["study_id"]
+            isOneToOne: false
+            referencedRelation: "studies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      prototype_versions: {
+        Row: {
+          created_at: string
+          figma_file_key: string
+          figma_file_name: string | null
+          figma_node_tree: Json | null
+          figma_source_last_modified: string | null
+          id: string
+          snapshot_taken_at: string
+          starting_frame_id: string | null
+          status: string
+          study_id: string
+        }
+        Insert: {
+          created_at?: string
+          figma_file_key: string
+          figma_file_name?: string | null
+          figma_node_tree?: Json | null
+          figma_source_last_modified?: string | null
+          id?: string
+          snapshot_taken_at?: string
+          starting_frame_id?: string | null
+          status?: string
+          study_id: string
+        }
+        Update: {
+          created_at?: string
+          figma_file_key?: string
+          figma_file_name?: string | null
+          figma_node_tree?: Json | null
+          figma_source_last_modified?: string | null
+          id?: string
+          snapshot_taken_at?: string
+          starting_frame_id?: string | null
+          status?: string
+          study_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prototype_versions_study_id_fkey"
+            columns: ["study_id"]
+            isOneToOne: false
+            referencedRelation: "studies"
             referencedColumns: ["id"]
           },
         ]
