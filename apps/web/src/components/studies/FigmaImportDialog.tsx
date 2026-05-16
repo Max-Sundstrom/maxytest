@@ -39,11 +39,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
-import {
-  useImportPrototype,
-  ImportPrototypeError,
-  type ImportPrototypeErrorCode,
-} from '@/lib/queries/prototypes';
+import { useImportPrototype, ImportPrototypeError } from '@/lib/queries/prototypes';
 import { useImportJob, type PrototypeImport } from '@/lib/queries/imports';
 import { parseFigmaShareLink } from '@/lib/figma/parse-share-link';
 
@@ -86,12 +82,22 @@ function statusPillClass(status: PrototypeImport['status']): string {
   }
 }
 
-/** Friendly copy for the typed error codes from `ImportPrototypeError`. */
-function errorMessageFromCode(
-  code: ImportPrototypeErrorCode | null,
-  fallback: string | null,
-): string {
+/**
+ * Friendly copy for both mutation-call-time codes (from `ImportPrototypeError`)
+ * AND worker-side codes (written to `prototype_imports.error_code` by
+ * `figma-import-worker`'s `failJob` helper). The parameter type is `string`
+ * (not the `ImportPrototypeErrorCode` union) so we can extend the friendly
+ * map here without having to relax the mutation-error union in two files —
+ * worker codes never flow through `ImportPrototypeError`; they reach the
+ * dialog via `useImportJob(import_id)`.
+ *
+ * Keep in sync with the `failJob('<code>', …)` call sites in
+ * `supabase/functions/figma-import-worker/index.ts` and with the HTTP-level
+ * error returns at the top of that file.
+ */
+function errorMessageFromCode(code: string | null, fallback: string | null): string {
   switch (code) {
+    // ─── Mutation-call-time codes (from ImportPrototypeError) ─────────────
     case 'workspace_membership_required':
       return "You don't have permission to import into this workspace.";
     case 'unauthenticated':
@@ -102,7 +108,37 @@ function errorMessageFromCode(
       return 'This test no longer exists.';
     case 'bad_request':
       return 'Missing or invalid import parameters.';
+    case 'configuration_missing':
+      return 'The import service is misconfigured on the server. Contact your administrator.';
+    case 'study_lookup_failed':
+      return "We couldn't look up this test. Try again in a moment.";
+    // ─── Worker-side codes (written to prototype_imports.error_code) ──────
+    case 'figma_unauthorized':
+      return 'Your Figma access token was rejected. Check the token in figma.com/settings → Personal access tokens (needs file_read scope).';
+    case 'figma_not_found':
+      return "Figma couldn't find that file. The share link might be private, deleted, or unsupported.";
+    case 'figma_error':
+      return "Figma's API returned an error. Try again in a moment, or check that the file is accessible.";
+    case 'figma_no_frames':
+      return 'This Figma file has no frames to import. Make sure it has at least one Frame at the top level of a page.';
+    case 'figma_images_failed':
+      return "Figma couldn't generate PNG renders for this file. The file might be too complex; try with a smaller prototype.";
+    case 'figma_image_url_missing':
+      return "Figma returned a render result that's missing one or more frame URLs. Re-try the import.";
+    case 'storage_upload_failed':
+      return "We couldn't save the prototype renders. Check your workspace storage quota and try again.";
+    case 'prototype_version_reserve_failed':
+    case 'frames_insert_failed':
+    case 'hotspots_insert_failed':
+    case 'prototype_version_complete_failed':
+      return 'Saving the imported prototype failed mid-flight. Re-try the import.';
+    case 'figma_tree_too_large':
+      return 'This Figma file is too large to import. It contains many library components or deeply-nested groups. Try a smaller file or one without external library references.';
+    case 'unhandled':
+      return 'Something went wrong during import. The import job is recorded — retry to attempt again.';
+    // ─── Default / unknown ────────────────────────────────────────────────
     case 'unknown':
+    case 'unknown_error':
     case null:
     default:
       return fallback ?? 'Import failed. Try again or check your token.';
@@ -357,11 +393,22 @@ interface ImportProgressProps {
 function ImportProgress({ job, progressPct }: ImportProgressProps) {
   const warnings = Array.isArray(job.warnings) ? job.warnings : [];
 
+  // D-04a — surface BOTH the friendly code label AND the raw server message
+  // when both exist. The friendly text is the human-readable lead; the raw
+  // server text is the diagnostic detail (smaller, mono-font) so users can
+  // copy-paste the exact message into a bug report. Falls back to a single
+  // line if only one source is available.
   const errorBody = (() => {
     if (job.status !== 'failed') return null;
-    if (job.error_message) return job.error_message;
-    const code = job.error_code as ImportPrototypeErrorCode | null;
-    return errorMessageFromCode(code, null);
+    const code = job.error_code as string | null;
+    const friendly = errorMessageFromCode(code, null);
+    const raw = job.error_message ?? null;
+    if (friendly && raw && friendly !== raw) {
+      return { friendly, raw };
+    }
+    if (friendly) return { friendly, raw: null };
+    if (raw) return { friendly: null, raw };
+    return { friendly: errorMessageFromCode(null, null), raw: null };
   })();
 
   return (
@@ -402,7 +449,12 @@ function ImportProgress({ job, progressPct }: ImportProgressProps) {
           role="alert"
           className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900"
         >
-          {errorBody}
+          {errorBody.friendly && <p className="font-medium">{errorBody.friendly}</p>}
+          {errorBody.raw && (
+            <p className={errorBody.friendly ? 'mt-1 text-xs text-red-800/80' : ''}>
+              <span className="font-mono">{errorBody.raw}</span>
+            </p>
+          )}
         </div>
       )}
 
