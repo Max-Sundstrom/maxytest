@@ -78,3 +78,56 @@
     outline-offset: 2px;
   }
 }
+
+/*
+ * Phase 2 / Plan 02-09 — PrototypeViewer transition keyframes.
+ *
+ * Three transition kinds ship in v1; smart_animate degrades to dissolve.
+ * Durations are passed via inline `style={{ animationDuration: ... }}` on
+ * the <TransitionAnimator> wrapper (CONTEXT D-10: dissolve=200ms, slide=
+ * 300ms, push=400ms). `animation-fill-mode: forwards` holds the final
+ * state until the parent re-renders the new frame.
+ *
+ * a11y (WCAG 2.3.3): prefers-reduced-motion collapses to 0ms so the
+ * pointer-events lockout still runs but the visual is instant.
+ */
+@keyframes prototype-dissolve {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes prototype-slide {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@keyframes prototype-push {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+.animate-prototype-dissolve {
+  animation: prototype-dissolve ease-out forwards;
+}
+.animate-prototype-slide {
+  animation: prototype-slide ease-out forwards;
+}
+.animate-prototype-push {
+  animation: prototype-push ease-out forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-prototype-dissolve,
+  .animate-prototype-slide,
+  .animate-prototype-push {
+    animation-duration: 0ms !important;
+  }
+}
