@@ -30,7 +30,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabaseAnon } from '@/lib/supabase/anon';
 import type { Database, Json } from '@/lib/supabase/types.gen';
-import type { Block, Phase1BlockType } from '@/lib/blocks/types';
+import type { Block, Phase2BlockType } from '@/lib/blocks/types';
 import type { BlockContent } from '@/lib/blocks/schemas';
 
 type SessionRow = Database['public']['Tables']['sessions']['Row'];
@@ -73,7 +73,7 @@ function rowToBlock(row: BlockRow): Block {
     id: row.id,
     study_id: row.study_id,
     position: row.position,
-    type: row.type as Phase1BlockType,
+    type: row.type as Phase2BlockType,
     pinned: row.pinned,
     content: row.content as unknown as BlockContent,
     version: row.version,

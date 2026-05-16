@@ -39,11 +39,25 @@ export type BlockType =
  */
 export type Phase1BlockType = 'welcome' | 'open_question' | 'thanks';
 
+/**
+ * Phase 2: extended to include the prototype block (BLK-12).
+ *
+ * The DB CHECK constraint on `public.blocks.type` is widened in tandem by
+ * `supabase/migrations/00008_phase2_blocks_prototype_type.sql`. Phase1BlockType
+ * is preserved as a historical reference but the `Block.type` field below
+ * points at `Phase2BlockType` so downstream call sites narrow correctly.
+ *
+ * RESEARCH.md Pitfall 12 — DB and TS move together; widening the TS alias
+ * without widening the CHECK constraint (or vice versa) would create a
+ * runtime / compile-time skew that the publish flow eventually hits.
+ */
+export type Phase2BlockType = Phase1BlockType | 'prototype';
+
 export interface Block {
   id: string;
   study_id: string;
   position: number;
-  type: Phase1BlockType;
+  type: Phase2BlockType;
   /** welcome/thanks have pinned=true → cannot be moved or deleted (D-11). */
   pinned: boolean;
   /** Discriminated by `type`; validated via `blockContentSchema`. */

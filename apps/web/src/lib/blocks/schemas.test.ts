@@ -10,12 +10,21 @@ import { describe, expect, it } from 'vitest';
 import {
   blockContentSchema,
   openQuestionContentSchema,
+  prototypeContentSchema,
   thanksContentSchema,
   welcomeContentSchema,
 } from './schemas';
 import { OPEN_QUESTION_DEFAULT, THANKS_DEFAULT, WELCOME_DEFAULT } from './defaults';
 import { BLOCK_REGISTRY } from './registry';
 import { Hand, Heart, MessageSquare, Smartphone } from 'lucide-react';
+
+/**
+ * Dummy UUIDv7-format string used across the prototype schema tests. The
+ * Zod validator only asserts UUID shape (not version), so any well-formed
+ * UUID literal works; a UUIDv7-shaped one keeps parity with how the import
+ * flow will generate real prototype_version_ids.
+ */
+const SAMPLE_PROTO_UUID = '00000000-0000-7000-8000-000000000000';
 
 describe('blockContentSchema (discriminated union)', () => {
   it('parses a valid welcome content payload', () => {
@@ -135,10 +144,10 @@ describe('BLOCK_REGISTRY', () => {
     expect(entry.disabledTooltip).toBe('Coming in Phase 4');
   });
 
-  it('prototype ships in Phase 2 with the locked tooltip and Smartphone icon', () => {
+  it('prototype is enabled in Phase 1 (active as of Plan 02-05) with Smartphone icon', () => {
     const entry = BLOCK_REGISTRY['prototype'];
-    expect(entry.enabledInPhase).toBe(2);
-    expect(entry.disabledTooltip).toBe('Coming in Phase 2');
+    expect(entry.enabledInPhase).toBe(1);
+    expect(entry.disabledTooltip).toBeUndefined();
     expect(entry.icon).toBe(Smartphone);
   });
 
@@ -146,5 +155,90 @@ describe('BLOCK_REGISTRY', () => {
     // Sanity check: the registry covers every BlockType in the union.
     const keys = Object.keys(BLOCK_REGISTRY);
     expect(keys.length).toBeGreaterThanOrEqual(16);
+  });
+});
+
+describe('prototypeContentSchema', () => {
+  it('parses a fully-populated prototype content payload', () => {
+    const result = prototypeContentSchema.safeParse({
+      type: 'prototype',
+      prototype_version_id: SAMPLE_PROTO_UUID,
+      starting_frame_id: 'f1',
+      task_instruction: 'Find how to change your password.',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects content missing prototype_version_id', () => {
+    const result = prototypeContentSchema.safeParse({
+      type: 'prototype',
+      starting_frame_id: 'f1',
+      task_instruction: 'X',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects content with a non-UUID prototype_version_id', () => {
+    const result = prototypeContentSchema.safeParse({
+      type: 'prototype',
+      prototype_version_id: 'not-a-uuid',
+      starting_frame_id: 'f1',
+      task_instruction: 'X',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      // The custom message is preferred but the default Zod UUID error is
+      // also acceptable — both indicate the prototype must be imported first.
+      const messages = result.error.issues.map((issue) => issue.message).join(' | ');
+      expect(messages.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('rejects content with an empty starting_frame_id', () => {
+    const result = prototypeContentSchema.safeParse({
+      type: 'prototype',
+      prototype_version_id: SAMPLE_PROTO_UUID,
+      starting_frame_id: '',
+      task_instruction: 'X',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects task_instruction longer than 280 characters', () => {
+    const result = prototypeContentSchema.safeParse({
+      type: 'prototype',
+      prototype_version_id: SAMPLE_PROTO_UUID,
+      starting_frame_id: 'f1',
+      task_instruction: 'A'.repeat(281),
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts optional success_path and finish_frame_ids arrays', () => {
+    const result = prototypeContentSchema.safeParse({
+      type: 'prototype',
+      prototype_version_id: SAMPLE_PROTO_UUID,
+      starting_frame_id: 'f1',
+      task_instruction: 'OK',
+      success_path: ['f1', 'f2', 'f3'],
+      finish_frame_ids: ['f3'],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('discriminates the prototype variant through the full union', () => {
+    // Verifies blockContentSchema (discriminatedUnion) routes `type:'prototype'`
+    // to prototypeContentSchema and returns the narrowed type.
+    const result = blockContentSchema.parse({
+      type: 'prototype',
+      prototype_version_id: SAMPLE_PROTO_UUID,
+      starting_frame_id: 'f1',
+      task_instruction: 'Find pricing.',
+    });
+    expect(result.type).toBe('prototype');
+    if (result.type === 'prototype') {
+      expect(result.prototype_version_id).toBe(SAMPLE_PROTO_UUID);
+      expect(result.starting_frame_id).toBe('f1');
+    }
   });
 });

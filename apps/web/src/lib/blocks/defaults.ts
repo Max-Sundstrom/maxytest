@@ -27,3 +27,21 @@ export const OPEN_QUESTION_DEFAULT: OpenQuestionContent = {
   type: 'open_question',
   question: 'What did you find confusing about this design?',
 };
+
+/**
+ * Phase 2 — prototype default is INTENTIONALLY partial (CONTEXT.md D-10).
+ *
+ * The designer must import a Figma file before the block can satisfy
+ * `prototypeContentSchema` (which requires `prototype_version_id` UUID and
+ * a non-empty `starting_frame_id`). Until that happens, `BlockCard` renders
+ * an "Import Figma prototype" CTA on top of this partial seed.
+ *
+ * Not typed as `PrototypeContent` because it intentionally omits the required
+ * fields. The catalog-insert call site casts at insertion (the row in the DB
+ * still goes through `prototypeContentSchema` once `prototype_version_id` is
+ * populated by the import flow).
+ */
+export const PROTOTYPE_DEFAULT_PARTIAL = {
+  type: 'prototype' as const,
+  task_instruction: '',
+};

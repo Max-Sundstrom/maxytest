@@ -137,14 +137,14 @@ export const BLOCK_REGISTRY: Record<BlockType, BlockRegistryEntry> = {
     disabledTooltip: 'Coming in Phase 4',
   },
 
-  // -- Phase 2 (prototype) --------------------------------------------------
+  // -- Phase 2 (prototype) — active as of Plan 02-05 ------------------------
   prototype: {
     label: 'Figma prototype',
     description: 'Interactive Figma prototype with click tracking.',
     icon: Smartphone,
     category: 'prototype',
-    enabledInPhase: 2,
-    disabledTooltip: 'Coming in Phase 2',
+    enabledInPhase: 1,
+    // disabledTooltip removed — Phase 2 active
   },
 
   // -- Phase 7 (specialized formats) ----------------------------------------
