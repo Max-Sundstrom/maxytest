@@ -12,6 +12,7 @@
     "src/code.ts",
     "src/lib/sandbox/**/*.ts",
     "src/lib/sandbox-storage.ts",
+    "src/lib/sandbox-collect.ts",
     "src/types.ts"
   ]
 }

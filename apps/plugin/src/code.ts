@@ -23,6 +23,8 @@
 //   - Does not import React or react-dom (no DOM in sandbox).
 //   - Does not reference window / document / localStorage.
 
+import { detectStartingFrames } from './lib/flow-detection';
+import { runImport, serializeFlowDetectionInput } from './lib/sandbox-collect';
 import { handleStorageMessage, type StorageRequestMessage } from './lib/sandbox-storage';
 
 figma.showUI(__html__, { width: 360, height: 540 });
@@ -33,7 +35,14 @@ figma.showUI(__html__, { width: 360, height: 540 });
 type IncomingMessage =
   | StorageRequestMessage
   | { type: 'open-external'; url: string }
-  | { type: 'close' };
+  | { type: 'close' }
+  | { type: 'detect-flows' }
+  | {
+      type: 'start-import';
+      flowNodeId: string;
+      pageId: string;
+      prototypeVersionId: string;
+    };
 
 figma.ui.onmessage = (raw: unknown) => {
   // Defensive parse — the iframe is our own React code, but the IPC seam is
@@ -68,10 +77,52 @@ figma.ui.onmessage = (raw: unknown) => {
       figma.closePlugin();
       return;
     }
+    case 'detect-flows': {
+      // Pure orchestration — serialize the document, run the cascade, post
+      // the result. Errors here surface as an empty flows array; the UI
+      // shows an ErrorCard with `plugin_no_prototype` in that case.
+      try {
+        const input = serializeFlowDetectionInput();
+        const flows = detectStartingFrames(input);
+        figma.ui.postMessage({ type: 'flows-result', flows });
+      } catch (err) {
+        figma.ui.postMessage({
+          type: 'import-error',
+          code: 'plugin_render_failed',
+          message: `flow detection failed: ${String(err)}`,
+        });
+      }
+      return;
+    }
+    case 'start-import': {
+      // Fire-and-forget — runImport posts its own progress + completion
+      // messages over IPC. Validate the required string fields first.
+      const args = msg as {
+        flowNodeId?: unknown;
+        pageId?: unknown;
+        prototypeVersionId?: unknown;
+      };
+      if (
+        typeof args.flowNodeId !== 'string' ||
+        typeof args.pageId !== 'string' ||
+        typeof args.prototypeVersionId !== 'string'
+      ) {
+        figma.ui.postMessage({
+          type: 'import-error',
+          code: 'plugin_render_failed',
+          message: 'start-import: missing required fields',
+        });
+        return;
+      }
+      void runImport({
+        flowNodeId: args.flowNodeId,
+        pageId: args.pageId,
+        prototypeVersionId: args.prototypeVersionId,
+      });
+      return;
+    }
     default: {
-      // Unknown messages logged for debugging only — never thrown. Plan 07
-      // adds `detect-flows` and `start-import` to the union; until then
-      // anything else is a noop.
+      // Unknown messages logged for debugging only — never thrown.
       console.warn('[plugin] unknown message type:', msg.type);
       return;
     }

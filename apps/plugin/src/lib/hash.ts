@@ -15,6 +15,19 @@
 // `noUncheckedIndexedAccess: true` is inherited from tsconfig.base.json,
 // hence the `bytes[i]!` non-null assertion. The assertion is safe because
 // the loop condition `i < bytes.length` proves the access is in-bounds.
+//
+// Web Crypto availability: this module compiles under TWO tsconfigs —
+// tsconfig.code.json (sandbox, no DOM lib) and tsconfig.ui.json (DOM lib).
+// The UI bundle gets `crypto.subtle` from the DOM lib for free; the
+// sandbox runtime DOES have `crypto.subtle` (Figma's JS host is Chromium-
+// based) but tsconfig.code.json deliberately excludes DOM so we ambient-
+// declare the minimum surface we use. This keeps the sandbox bundle
+// strictly typed without pulling in the entire DOM.
+
+// Ambient declaration scoped to this module (TS removes it at emit).
+declare const crypto: {
+  subtle: { digest(alg: string, data: ArrayBuffer): Promise<ArrayBuffer> };
+};
 
 /** SHA-256 hex over the first 16 chars (8 bytes) of the digest. */
 export async function sha256_16(buf: ArrayBuffer): Promise<string> {

@@ -40,22 +40,78 @@ export type PluginErrorCode =
   | 'auth_timeout'
   | 'unknown_error';
 
+/** Hotspot row shape as emitted by the sandbox after BFS + reaction
+ *  parsing. The fields match the wire payload the RPC consumes (snake_case,
+ *  decomposed bbox) so the UI iframe can pass them straight through to
+ *  shapePayload(...) without translation. */
+export interface SandboxHotspot {
+  frame_node_id: string;
+  hotspot_id: string;
+  target_frame_id: string | null;
+  transition_kind: 'slide' | 'push' | 'smart_animate' | 'dissolve';
+  bbox_x: number;
+  bbox_y: number;
+  bbox_w: number;
+  bbox_h: number;
+  z_index: number;
+  source_layer: string | null;
+  figma_raw: unknown[];
+}
+
+/** Warnings entry — non-blocking diagnostics surfaced via SUMMARY UI later. */
+export interface SandboxWarning {
+  code: string;
+  frame_id?: string;
+  bytes?: number;
+}
+
 /** Messages SANDBOX → UI iframe.
  *  The sandbox is the trusted side (talks to figma.*); UI is the
  *  network-facing side. Sandbox posts collected data + progress events; UI
  *  consumes them, drives Storage uploads and the RPC call.
+ *
+ *  Plan 02.2-07 wire-up:
+ *    - `flows-result` answers a `detect-flows` request.
+ *    - `progress` reports stage transitions during `start-import`. The
+ *      `publishing` stage is reported by the UI (not the sandbox) since
+ *      the RPC call lives in the iframe — the sandbox stops at `rendering`.
+ *    - `frame-rendered` ships PNG bytes for each scale; UI iframe holds
+ *      them in a Map until it has both 1× + 2× for every reachable frame.
+ *    - `hotspots-collected` is sent ONCE per import — after BFS completes
+ *      but before frame rendering begins — so the UI iframe has the
+ *      `prototype_version_id` (UUIDv7) it needs to compute Storage paths.
+ *    - `import-complete` / `import-error` close the import lifecycle.
  */
 export type SandboxToUiMessage =
   | { type: 'flows-detected'; flows: FlowStart[] }
   | { type: 'flows-result'; flows: FlowStart[] }
   | {
       type: 'progress';
-      stage: 'parsing' | 'rendering' | 'uploading';
+      stage: 'parsing' | 'rendering' | 'uploading' | 'publishing';
       done: number;
       total: number;
     }
-  | { type: 'frame-rendered'; frameId: string; scale: 1 | 2; bytes: ArrayBuffer }
+  | {
+      type: 'frame-rendered';
+      frameId: string;
+      scale: 1 | 2;
+      bytes: ArrayBuffer;
+      name: string;
+      width: number;
+      height: number;
+      position: number;
+    }
   | { type: 'storage-reply'; id: number; value: string | null }
+  | {
+      type: 'hotspots-collected';
+      prototypeVersionId: string;
+      fileKey: string;
+      fileName: string;
+      startingFrameId: string;
+      reachableCount: number;
+      hotspots: SandboxHotspot[];
+      warnings: SandboxWarning[];
+    }
   | {
       type: 'collected';
       frames: Array<{
@@ -65,23 +121,13 @@ export type SandboxToUiMessage =
         height: number;
         position: number;
       }>;
-      hotspots: Array<{
-        frame_node_id: string;
-        hotspot_id: string;
-        target_frame_id: string | null;
-        transition_kind: 'slide' | 'push' | 'smart_animate' | 'dissolve';
-        bbox_x: number;
-        bbox_y: number;
-        bbox_w: number;
-        bbox_h: number;
-        z_index: number;
-        source_layer: string | null;
-        figma_raw: unknown[];
-      }>;
-      warnings: Array<{ code: string; frame_id?: string; bytes?: number }>;
+      hotspots: SandboxHotspot[];
+      warnings: SandboxWarning[];
       fileKey: string;
       fileName: string;
     }
+  | { type: 'import-complete'; prototypeVersionId: string }
+  | { type: 'import-error'; code: PluginErrorCode; message: string }
   | { type: 'error'; code: PluginErrorCode; message: string };
 
 /** Messages UI iframe → SANDBOX.
@@ -92,7 +138,19 @@ export type SandboxToUiMessage =
  */
 export type UiToSandboxMessage =
   | { type: 'detect-flows' }
-  | { type: 'start-import'; flowNodeId: string; pageId: string }
+  | {
+      type: 'start-import';
+      /** Figma node id of the chosen flow's starting frame. */
+      flowNodeId: string;
+      /** PageNode id that owns the chosen flow. The sandbox switches
+       *  `figma.currentPage` to this page before exporting frames — some
+       *  node types require the owning page to be current for exportAsync. */
+      pageId: string;
+      /** UUIDv7 generated client-side by the UI iframe (D-03a) so Storage
+       *  paths are predictable BEFORE the RPC runs. Sandbox echoes it back
+       *  in `hotspots-collected` and uses it in `import-complete`. */
+      prototypeVersionId: string;
+    }
   | { type: 'open-external'; url: string }
   | { type: 'close' }
   | {
