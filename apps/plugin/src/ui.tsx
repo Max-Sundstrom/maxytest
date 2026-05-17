@@ -239,9 +239,19 @@ function App() {
       {screen.kind === 'success' && (
         <>
           <PluginHeader onClose={closePlugin} />
+          {/* Plan 07 Task 3 rewrote SuccessView to use the deep-link contract.
+              The full ui.tsx rewrite lands in Task 4 — this stub keeps
+              typecheck green for the intermediate commit by passing
+              placeholder values. Real state-machine wiring comes next. */}
           <SuccessView
-            shareCode={screen.shareCode}
+            flowName={`Plan 07 placeholder: ${screen.shareCode}`}
+            framesCount={0}
+            hotspotsCount={0}
+            replayed={false}
+            deepLinkUrl=""
+            onOpen={() => {}}
             onBack={() => setScreen({ kind: 'paste-url' })}
+            onSignOut={() => {}}
           />
         </>
       )}
