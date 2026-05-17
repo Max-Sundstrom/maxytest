@@ -103,10 +103,13 @@ export async function publishCollected(input: PublishInput): Promise<PublishResu
   // 1. Hash every (frame, scale) pair up-front so the Storage path is
   //    available before the first upload starts. Hashing is cheap (~µs per
   //    KB on Web Crypto) compared to the upload itself.
+  // sha256_16 is now synchronous (pure-JS via js-sha256 — see hash.ts).
+  // The `await` is gone; the loop runs in one event-loop tick instead of
+  // N microtask cycles.
   const hashed: Array<CollectedFrameBytes & { hash1x: string; hash2x: string }> = [];
   for (const f of input.frames) {
-    const h1 = await sha256_16(f.bytes1x);
-    const h2 = await sha256_16(f.bytes2x);
+    const h1 = sha256_16(f.bytes1x);
+    const h2 = sha256_16(f.bytes2x);
     hashed.push({ ...f, hash1x: h1, hash2x: h2 });
   }
 

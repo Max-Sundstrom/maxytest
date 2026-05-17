@@ -81,17 +81,28 @@ figma.ui.onmessage = (raw: unknown) => {
       // Pure orchestration — serialize the document, run the cascade, post
       // the result. Errors here surface as an empty flows array; the UI
       // shows an ErrorCard with `plugin_no_prototype` in that case.
-      try {
-        const input = serializeFlowDetectionInput();
-        const flows = detectStartingFrames(input);
-        figma.ui.postMessage({ type: 'flows-result', flows });
-      } catch (err) {
-        figma.ui.postMessage({
-          type: 'import-error',
-          code: 'plugin_render_failed',
-          message: `flow detection failed: ${String(err)}`,
-        });
-      }
+      void (async () => {
+        try {
+          // manifest.documentAccess = "dynamic-page" means Figma lazily loads
+          // pages — non-current PageNode.children / .flowStartingPoints throw
+          // "Cannot access property `children` on a page that has not been
+          // explicitly loaded" until we explicitly request all pages. Single
+          // upfront call here is the simplest model: we want to enumerate
+          // flow starting points across the ENTIRE document anyway, so the
+          // alternative (per-page loadAsync inside serialize…) buys no perf
+          // win and adds complexity.
+          await figma.loadAllPagesAsync();
+          const input = serializeFlowDetectionInput();
+          const flows = detectStartingFrames(input);
+          figma.ui.postMessage({ type: 'flows-result', flows });
+        } catch (err) {
+          figma.ui.postMessage({
+            type: 'import-error',
+            code: 'plugin_render_failed',
+            message: `flow detection failed: ${String(err)}`,
+          });
+        }
+      })();
       return;
     }
     case 'start-import': {

@@ -34,7 +34,10 @@
 
 import { walkReachable, type BfsNode } from './bfs';
 import type { FlowDetectionInput } from './flow-detection';
-import { sha256_16 } from './hash';
+// (sha256_16 used to be imported here for a runtime probe; the probe was
+// removed when we discovered Figma's sandbox has no `crypto` global at
+// all. Hashing of PNG bytes for content-addressable Storage paths happens
+// in the UI iframe — see apps/plugin/src/lib/ui/publish.ts.)
 import { mapTransition } from './transition';
 import type { SandboxHotspot, SandboxWarning, SandboxToUiMessage } from '../types';
 
@@ -335,6 +338,14 @@ export async function runImport(args: {
     // -------------------- 1. PARSING --------------------
     postToUi({ type: 'progress', stage: 'parsing', done: 0, total: 1 });
 
+    // manifest.documentAccess = "dynamic-page" means Figma lazily loads
+    // pages — non-current PageNode.children throws until we explicitly
+    // request all pages. We always need the BFS to traverse reactions
+    // across the prototype's page, and exportAsync for overlays may
+    // require neighboring pages too, so load everything upfront.
+    // Single roundtrip, run BEFORE we touch figma.root.children below.
+    await figma.loadAllPagesAsync();
+
     // Switch to the owning page — exportAsync requires the current page
     // for some node types (overlay frames, dynamic-page-loaded pages).
     const page = figma.root.children.find((p) => p.id === args.pageId);
@@ -346,7 +357,13 @@ export async function runImport(args: {
       });
       return;
     }
-    figma.currentPage = page;
+    // In dynamic-page mode the synchronous setter throws:
+    //   "Cannot call with documentAccess: dynamic-page.
+    //    Use figma.setCurrentPageAsync instead."
+    // The async variant is the only legal way to switch active page in
+    // this manifest mode — and it's a no-op when `page` already IS the
+    // current page, so calling it unconditionally is safe.
+    await figma.setCurrentPageAsync(page);
 
     const graph = collectReactionsGraph(args.pageId);
     const reachableIds = walkReachable(args.flowNodeId, (id) => graph.get(id), 5000);
@@ -391,10 +408,29 @@ export async function runImport(args: {
       allWarnings.push(...warnings);
     }
 
+    // `figma.fileKey` is null for files that aren't cloud-saved, for some
+    // Development-mode plugin scenarios, and (occasionally) for files
+    // freshly opened from a local copy. The downstream Zod schema requires
+    // a non-empty string here, so we synthesize one. The synthesized key
+    // uses the prototype's starting flow node id, which is at least
+    // stable across re-imports of the SAME flow in the SAME Figma file —
+    // good enough for plugin-side dedup. We tag the synthesized key with
+    // a `local:` prefix so the worker / report UI can tell real Figma
+    // file keys from fallbacks and surface a "save to cloud" hint.
+    const realFileKey = figma.fileKey;
+    const fileKey =
+      realFileKey && realFileKey.length > 0 ? realFileKey : `local:${args.flowNodeId}`;
+    if (!realFileKey) {
+      allWarnings.push({
+        code: 'no_file_key',
+        frame_id: args.flowNodeId,
+      });
+    }
+
     postToUi({
       type: 'hotspots-collected',
       prototypeVersionId: args.prototypeVersionId,
-      fileKey: figma.fileKey ?? '',
+      fileKey,
       fileName: figma.root.name,
       startingFrameId: args.flowNodeId,
       reachableCount: frames.length,
@@ -463,11 +499,13 @@ export async function runImport(args: {
       postToUi({ type: 'progress', stage: 'rendering', done: i + 1, total });
     }
 
-    // hash check — call sha256_16 here so we surface any subtle/crypto
-    // unavailability in the sandbox EARLY rather than silently. (We don't
-    // re-send the hashes — UI computes them again so we don't have to
-    // grow the IPC contract.)
-    await sha256_16(new ArrayBuffer(0));
+    // (Historical: a sha256_16 probe ran here to fail fast if
+    // `crypto.subtle` was unavailable in the sandbox. It turns out
+    // Figma's plugin sandbox runtime does NOT expose `crypto` at all —
+    // ReferenceError: 'crypto' is not defined. The probe was the only
+    // thing that needed it; the UI iframe owns all hashing for Storage
+    // paths and gets `crypto.subtle` from the DOM. So we just drop the
+    // probe instead of pulling a pure-JS SHA-256 in for no benefit.)
 
     // Sandbox is done; UI iframe handles uploading + publishing.
   } catch (err) {

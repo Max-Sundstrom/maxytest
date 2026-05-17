@@ -24,16 +24,24 @@
 // declare the minimum surface we use. This keeps the sandbox bundle
 // strictly typed without pulling in the entire DOM.
 
-// Ambient declaration scoped to this module (TS removes it at emit).
-declare const crypto: {
-  subtle: { digest(alg: string, data: ArrayBuffer): Promise<ArrayBuffer> };
-};
+// IMPORTANT: do NOT use `crypto.subtle.digest` here. `crypto.subtle` is
+// a secure-context-only API (HTTPS origin), and the Figma plugin iframe
+// loads under a non-secure origin (effectively `null:`). At runtime that
+// makes `crypto.subtle` `undefined` and the digest call throws
+// "Cannot read properties of undefined (reading 'digest')" — the same
+// secure-context restriction that bit `crypto.randomUUID` earlier.
+//
+// We fall back to `js-sha256`, a tiny zero-dep pure-JS SHA-256 that
+// produces byte-identical output to crypto.subtle's SHA-256 algorithm
+// (verified by __tests__/hash.test.ts cross-checks against Node's
+// createHash). That preserves the dedup contract with the worker's
+// `upsert: false` Storage paths.
+import { sha256 as jsSha256 } from 'js-sha256';
 
 /** SHA-256 hex over the first 16 chars (8 bytes) of the digest. */
-export async function sha256_16(buf: ArrayBuffer): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', buf);
-  const bytes = new Uint8Array(digest);
-  let hex = '';
-  for (let i = 0; i < bytes.length; i++) hex += bytes[i]!.toString(16).padStart(2, '0');
-  return hex.slice(0, 16);
+export function sha256_16(buf: ArrayBuffer): string {
+  // js-sha256 accepts ArrayBuffer/Uint8Array/string and returns a 64-char
+  // lowercase hex string. We take the first 16 chars (8 bytes / 64 bits
+  // of entropy — same as the previous crypto.subtle path).
+  return jsSha256(buf).slice(0, 16);
 }

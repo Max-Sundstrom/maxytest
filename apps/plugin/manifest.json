@@ -7,6 +7,6 @@
   "editorType": ["figma"],
   "documentAccess": "dynamic-page",
   "networkAccess": {
-    "allowedDomains": ["https://*.supabase.co"]
+    "allowedDomains": ["https://*.supabase.co", "wss://*.supabase.co"]
   }
 }

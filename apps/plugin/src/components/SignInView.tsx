@@ -44,13 +44,45 @@ export default function SignInView({ onSignedIn }: SignInViewProps) {
     setPending(false);
     if (authError) {
       const code = authError.message === 'auth_timeout' ? 'auth_timeout' : 'unknown_error';
+      const isTimeout = code === 'auth_timeout';
+      const friendlyTail = isTimeout
+        ? 'Сессия входа истекла за 10 минут. Попробуй снова.'
+        : 'Не получилось завершить вход. Попробуй снова.';
+      // Dump every diagnostic surface we have on the error object — message
+      // can come back empty for Supabase Realtime subscribe failures (the
+      // err param is sometimes `undefined`), in which case we still want
+      // SOMETHING to debug from. We stringify the error via several lenses
+      // and concatenate whatever produces useful output.
+      let rawDetail = '';
+      if (!isTimeout) {
+        const e = authError as unknown as {
+          name?: string;
+          message?: string;
+          code?: string;
+          stack?: string;
+        };
+        const parts: string[] = [];
+        if (e.name) parts.push(`name=${e.name}`);
+        if (e.message) parts.push(`message=${e.message}`);
+        if (e.code) parts.push(`code=${e.code}`);
+        let asJson = '';
+        try {
+          asJson = JSON.stringify(authError);
+        } catch {
+          asJson = '<unstringifiable>';
+        }
+        if (asJson && asJson !== '{}') parts.push(`json=${asJson}`);
+        const stringified = String(authError);
+        if (stringified && stringified !== '[object Object]') {
+          parts.push(`toString=${stringified}`);
+        }
+        rawDetail =
+          parts.length > 0 ? `\n\nДетали: ${parts.join(' | ')}` : '\n\nДетали: <error без полей>';
+      }
       setError({
         code,
         title: 'Вход не удался',
-        message:
-          code === 'auth_timeout'
-            ? 'Сессия входа истекла за 10 минут. Попробуй снова.'
-            : 'Не получилось завершить вход. Попробуй снова.',
+        message: friendlyTail + rawDetail,
       });
       return;
     }

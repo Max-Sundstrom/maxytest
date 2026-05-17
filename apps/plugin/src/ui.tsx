@@ -194,6 +194,17 @@ function App() {
   // Cached workspace id (fetched once after sign-in).
   const workspaceIdRef = useRef<string | null>(null);
 
+  // Current flow being imported. Kept in a ref (NOT just on the `screen`
+  // state) because the IPC `onMessage` handler lives inside a useEffect
+  // with an empty deps array — its closure captures `screen` from the
+  // first render only (when `screen.kind === 'loading'`). Reading
+  // `screen.flow` from inside that stale closure always returns
+  // `undefined`, so `onAllFramesRendered` would fail with "Internal
+  // plugin state not ready" right when all frames arrive. A ref dodges
+  // the stale-closure trap — handlePublish sets it before posting
+  // `start-import`, onAllFramesRendered reads it after all frames land.
+  const currentFlowRef = useRef<FlowStart | null>(null);
+
   // Inject the stylesheet ONCE.
   useEffect(() => {
     const style = document.createElement('style');
@@ -385,12 +396,25 @@ function App() {
     const wsId = workspaceIdRef.current;
     const idem = idempotencyKeyRef.current;
     const pvId = prototypeVersionIdRef.current;
-    const flow = screenFlow();
+    // Use the ref, NOT screenFlow() — see comment on currentFlowRef.
+    const flow = currentFlowRef.current;
     if (!wsId || !idem || !pvId || !flow) {
+      // Surface which ref is empty so future debugging doesn't require
+      // another patch + rebuild. Each piece is intentionally separate;
+      // the runtime turns the four truthy checks into a comma-list that
+      // looks like "wsId, pvId" if those two are missing.
+      const missing = [
+        !wsId && 'workspace',
+        !idem && 'idempotency-key',
+        !pvId && 'prototype-version-id',
+        !flow && 'flow',
+      ]
+        .filter(Boolean)
+        .join(', ');
       setScreen({
         kind: 'error',
         code: 'unknown_error',
-        message: 'Внутреннее состояние плагина не готово к публикации',
+        message: `Внутреннее состояние плагина не готово к публикации (missing: ${missing})`,
         recoveryTo: 'picker',
       });
       return;
@@ -486,14 +510,6 @@ function App() {
     });
   }
 
-  /** Helper: extract the current flow from whichever screen carries one. */
-  function screenFlow(): FlowStart | undefined {
-    if (screen.kind === 'progress') return screen.flow;
-    if (screen.kind === 'success') return screen.flow;
-    if (screen.kind === 'error') return screen.flow;
-    return undefined;
-  }
-
   /** Begin a publish attempt. Generates idempotencyKey + prototypeVersionId
    *  (or reuses if `retry === true`). */
   function handlePublish(flow: FlowStart, retry: boolean): void {
@@ -503,6 +519,9 @@ function App() {
     if (!retry || !prototypeVersionIdRef.current) {
       prototypeVersionIdRef.current = uuidv7();
     }
+    // Mirror the flow into a ref so the stale-closure-locked IPC handler
+    // can still see it when frame-rendered messages start arriving.
+    currentFlowRef.current = flow;
     // Fresh per-attempt buffer (unless retrying a progress-stage error,
     // in which case we keep the already-collected hotspots/frames).
     if (!retry) {
@@ -533,6 +552,7 @@ function App() {
     idempotencyKeyRef.current = null;
     prototypeVersionIdRef.current = null;
     workspaceIdRef.current = null;
+    currentFlowRef.current = null;
     collectedRef.current = emptyBuffer();
     setScreen({ kind: 'sign-in' });
   }
@@ -542,6 +562,7 @@ function App() {
     // S4 Interactions").
     idempotencyKeyRef.current = null;
     prototypeVersionIdRef.current = null;
+    currentFlowRef.current = null;
     collectedRef.current = emptyBuffer();
     setScreen({ kind: 'picker', flows: null });
     sendIpc({ type: 'detect-flows' });
@@ -720,7 +741,16 @@ function ErrorScreen({
       <ErrorCard
         code={code}
         title={fr.title}
-        message={message && message !== fr.title ? `${fr.message}` : fr.message}
+        // Show the friendly summary FOLLOWED by the raw sandbox/RPC detail
+        // when present. The previous ternary discarded `message` entirely
+        // (both branches rendered `fr.message`), which hid the actual cause
+        // of plugin_render_failed / plugin_rpc_failed / plugin_upload_failed
+        // errors — leaving the user with no way to tell which frame broke.
+        message={
+          message && message !== fr.title && message !== fr.message
+            ? `${fr.message}\n\nДетали: ${message}`
+            : fr.message
+        }
         onRetry={onRetry}
         retryLabel={fr.retryLabel}
       />

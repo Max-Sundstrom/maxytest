@@ -36,6 +36,44 @@ import { supabase } from './supabase';
 /** Channel-level subscribe statuses that indicate failure (not just info). */
 type SubscribeFailureStatus = 'CHANNEL_ERROR' | 'TIMED_OUT' | 'CLOSED';
 
+/**
+ * Generate a v4-shaped UUID using `crypto.getRandomValues`.
+ *
+ * Why hand-rolled instead of `crypto.randomUUID()`:
+ *   - `crypto.randomUUID()` is gated on a *secure context* (HTTPS origin).
+ *   - The Figma Desktop plugin iframe runs under a non-secure origin
+ *     (`null:` effectively), so `crypto.randomUUID` is `undefined` and
+ *     calling it throws `TypeError: ... is not a function`.
+ *   - `crypto.getRandomValues` has no secure-context requirement — it's
+ *     part of the base Web Crypto API and works in every browser/runtime
+ *     Figma ships. We use it to produce 16 cryptographically random bytes,
+ *     then set the version (0100xxxx → v4) and variant (10xxxxxx → RFC 4122)
+ *     bits per the UUID v4 spec and format as `xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx`.
+ */
+function generateNonceUuidV4(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  // Version 4 — set the upper nibble of byte 6 to 0100.
+  // The `?? 0` chained against a Uint8Array index keeps tsconfig's
+  // `noUncheckedIndexedAccess` happy without changing runtime semantics
+  // (a Uint8Array of length 16 always has bytes 6 and 8 populated).
+  bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x40;
+  // RFC 4122 variant — set the upper two bits of byte 8 to 10.
+  bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80;
+  const hex2 = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  return (
+    hex2.slice(0, 8) +
+    '-' +
+    hex2.slice(8, 12) +
+    '-' +
+    hex2.slice(12, 16) +
+    '-' +
+    hex2.slice(16, 20) +
+    '-' +
+    hex2.slice(20, 32)
+  );
+}
+
 /** Result envelope shared by signInWithMagicLink — exactly the union the
  *  SignInView reducer expects (Task 4). */
 export interface AuthResult {
@@ -55,10 +93,17 @@ export interface AuthResult {
  * something else first will silently drop the browser launch (Pitfall 3).
  */
 export function signInWithMagicLink(viewerUrl: string): Promise<AuthResult> {
-  // 1) Generate a fresh ~122-bit nonce. crypto.randomUUID is available in
-  //    every Figma-supported desktop browser shell (Chromium 92+); no
-  //    polyfill needed.
-  const nonce = crypto.randomUUID();
+  // 1) Generate a fresh ~122-bit nonce.
+  //
+  //    NB: we deliberately do NOT use `crypto.randomUUID()` here. That API
+  //    only exists in *secure* contexts (HTTPS), and the Figma Desktop
+  //    plugin iframe loads under a non-secure origin (effectively `null:`),
+  //    so `crypto.randomUUID` resolves to `undefined` at runtime and throws
+  //    `TypeError: crypto.randomUUID is not a function` on the sign-in
+  //    click. `crypto.getRandomValues` IS available in every context (it's
+  //    part of the base Web Crypto API), so we use it to mint a v4-shaped
+  //    UUID by hand. 122 bits of entropy — equivalent to the spec.
+  const nonce = generateNonceUuidV4();
 
   // 2) Pitfall 3 — SYNCHRONOUSLY post the open-external IPC FIRST, before
   //    any await / channel.subscribe(). The sandbox handler forwards

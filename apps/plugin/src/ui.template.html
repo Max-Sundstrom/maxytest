@@ -40,6 +40,54 @@
   </head>
   <body>
     <div id="root"></div>
+    <!--
+      Visible error trap. Figma's plugin shell calls `console.clear()` on
+      startup, which wipes any pre-mount errors before the user can see
+      them in DevTools — producing the "blank white screen" symptom with
+      no diagnostic. This inline script (runs BEFORE the React bundle)
+      mounts a fallback DOM that captures uncaught errors and renders them
+      visibly inside #root. If React mounts successfully it overwrites the
+      fallback; if React (or supabase-js, or the JSX runtime) throws on
+      load the fallback survives and shows the error text.
+    -->
+    <script>
+      (function () {
+        var root = document.getElementById('root');
+        if (!root) return;
+        function show(label, detail) {
+          root.innerHTML =
+            '<div style="padding:16px;font:13px/1.5 system-ui,sans-serif;color:#7f1d1d;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;margin:12px;white-space:pre-wrap;overflow:auto;max-height:90vh">' +
+            '<div style="font-weight:600;margin-bottom:8px">Plugin failed to start: ' +
+            String(label) +
+            '</div><div style="font-family:ui-monospace,Menlo,monospace;font-size:12px">' +
+            String(detail).replace(/[<>&]/g, function (c) {
+              return c === '<' ? '&lt;' : c === '>' ? '&gt;' : '&amp;';
+            }) +
+            '</div></div>';
+        }
+        window.addEventListener('error', function (e) {
+          show(
+            e.message || 'error',
+            (e.error && e.error.stack) || e.filename + ':' + e.lineno + ':' + e.colno,
+          );
+        });
+        window.addEventListener('unhandledrejection', function (e) {
+          var r = e.reason;
+          show('unhandled promise rejection', (r && r.stack) || (r && r.message) || String(r));
+        });
+        // Sentinel — if React doesn't take over #root within 5 seconds,
+        // surface that too so we know the bundle never executed the
+        // createRoot(...).render(...) line.
+        setTimeout(function () {
+          if (root.childElementCount === 0) {
+            show(
+              'React did not mount within 5 seconds',
+              'The bundled JS may have failed silently before createRoot. Check the Open Console output (Plugins → Development → Open console) for the LAST line before "Console was cleared".',
+            );
+          }
+        }, 5000);
+      })();
+    </script>
     <!--INLINE_JS-->
   </body>
 </html>

@@ -82,6 +82,9 @@ export default function ErrorCard({
               fontWeight: 400,
               color: 'var(--color-error-text)',
               lineHeight: 1.5,
+              // Preserve `\n` line breaks in the message — used by the
+              // "Детали: <raw error>" suffix for diagnosable failures.
+              whiteSpace: 'pre-wrap',
             }}
           >
             {message}
