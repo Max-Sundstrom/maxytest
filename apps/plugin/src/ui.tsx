@@ -1,65 +1,200 @@
-// apps/plugin/src/ui.tsx — design-system v1 rewrite (2026-05-17).
+// apps/plugin/src/ui.tsx — Phase 02.2 Plan 07 Task 4.
 //
-// State machine for the full 4-screen handoff Pathway flow plus the pre-flow
-// sign-in (our integration needs auth first; handoff pre-supposes signed-in).
+// Top-level UI iframe entry point. Wires the full end-to-end import
+// pipeline: silent cached-session restore → flow detection → flow picker
+// (S2) → publishing progress (S3) → success deep-link (S4) → error
+// recovery (S5). The sandbox (apps/plugin/src/code.ts) does the Figma-API
+// heavy lifting; this file owns network-side work (Storage uploads,
+// `publish_prototype_from_plugin` RPC).
 //
-//   loading       — silent restoreCachedSession() roundtrip
-//   sign-in       — SignInView (Screen 0; pre-flow auth)
-//   paste-url     — PasteUrlView (Screen 1; handoff S01)
-//   choose-proto  — ChoosePrototypeView (Screen 2; handoff S02)
-//   importing     — interstitial during the publish RPC; DotsLoader
-//   success       — SuccessView (Screen 3; handoff S03)
-//   error         — ImportErrorView (Screen 4; handoff S04)
+// === State machine ===
 //
-// Plan 02.2-06 contract preserved (auth handshake + IPC plumbing). Plan
-// 02.2-07 wires the actual sandbox import pipeline into `runImport()` below
-// — currently stubbed so the visual flow is end-to-end testable in browser
-// preview.
+//   loading        — silent restoreCachedSession() + first workspace fetch
+//   sign-in        — magic-link Realtime handshake (Plan 05)
+//   picker         — Screen S2; selecting a flow + click "Опубликовать"
+//   progress       — Screen S3; reflects sandbox parsing/rendering then
+//                    UI's uploading/publishing stages
+//   success        — Screen S4; deep-link CTA opens study in browser
+//   error          — Screen S5; ErrorCard with friendly message + retry
 //
-// Pitfall 3 (user-gesture) reinforced inside SignInView's handleSignIn —
-// figma.openExternal must fire synchronously from the click. The state
-// machine merely transitions screens.
+// === IPC contract (sandbox → UI) ===
+//
+//   - flows-result        → transition loading/picker → picker(flows)
+//   - hotspots-collected  → cache the BFS output (hotspots, file metadata,
+//                           reachableCount, startingFrameId) for the
+//                           upcoming RPC call
+//   - frame-rendered      → accumulate ArrayBuffer by (frameId, scale)
+//   - progress            → update ProgressView counter (sandbox stages
+//                           only: parsing, rendering)
+//   - import-error        → transition to error screen with recovery code
+//
+// === Idempotency contract (D-03a) ===
+//
+//   - prototypeVersionId is a UUIDv7 generated ONCE per publish attempt
+//     at the start of handlePublish. Reused on retry (RPC dedups by
+//     `(study_id, idempotency_key)`).
+//   - idempotencyKey is a SEPARATE UUIDv7 generated ONCE at component
+//     mount. Reused on retry, regenerated only on "back from success
+//     → new publish" (so each publish creates an independent audit row).
+//
+// === Recovery flows (UI-SPEC §"Recovery flows") ===
+//
+//   - plugin_no_session  → S1
+//   - auth_timeout       → S1
+//   - plugin_no_prototype→ S2 (re-detect)
+//   - plugin_render_failed / plugin_upload_failed / plugin_rpc_failed → S3
+//     (retry handlePublish with the same idempotencyKey + prototypeVersionId)
+//   - unknown_error      → S2
+//
+// === Pitfall 3 (user-gesture) ===
+//
+//   - SuccessView "Open in Maxytest →" onOpen → posts `open-external`
+//     IPC SYNCHRONOUSLY from the click handler. Sandbox forwards to
+//     figma.openExternal(deepLinkUrl) without any await in between.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { uuidv7 } from 'uuidv7';
 
-import ChoosePrototypeView from './components/ChoosePrototypeView';
 import DotsLoader from './components/DotsLoader';
-import ImportErrorView from './components/ImportErrorView';
-import PasteUrlView from './components/PasteUrlView';
+import ErrorCard from './components/ErrorCard';
 import PluginHeader from './components/PluginHeader';
+import ProgressView, { type ProgressStage } from './components/ProgressView';
+import PrototypePickerView from './components/PrototypePickerView';
 import SignInView from './components/SignInView';
 import SuccessView from './components/SuccessView';
 import { restoreCachedSession, signOut } from './lib/auth';
+import { supabase } from './lib/supabase';
+import { getFriendlyError } from './lib/ui/friendly-errors';
+import { publishCollected, type CollectedFrameBytes } from './lib/ui/publish';
 import { cssString } from './styles.css';
+import type { FlowStart, PluginErrorCode, SandboxHotspot, SandboxWarning } from './types';
 
-// Placeholder README URL. Plan 02.2-08 will finalise this when the public
-// repo is stable.
+declare const process: { env: { VIEWER_URL: string } };
+
 const HELP_URL =
   'https://github.com/anthropics/maxytest-placeholder/blob/main/apps/plugin/README.md';
 
-interface PrototypeChoice {
-  id: string;
-  name: string;
-}
+// ─── Screen union ──────────────────────────────────────────────────────────
+
+type RecoveryTarget = 'sign-in' | 'picker' | 'progress';
 
 type Screen =
   | { kind: 'loading' }
   | { kind: 'sign-in' }
-  | { kind: 'paste-url' }
-  | { kind: 'choose-proto'; url: string; prototypes: PrototypeChoice[] }
-  | { kind: 'importing' }
-  | { kind: 'success'; shareCode: string }
-  | { kind: 'error'; protoName?: string; heading: string; body: string };
+  | { kind: 'picker'; flows: FlowStart[] | null }
+  | {
+      kind: 'progress';
+      flow: FlowStart;
+      stage: ProgressStage;
+      done: number;
+      total: number;
+    }
+  | {
+      kind: 'success';
+      flow: FlowStart;
+      framesCount: number;
+      hotspotsCount: number;
+      replayed: boolean;
+      deepLinkUrl: string;
+    }
+  | {
+      kind: 'error';
+      code: PluginErrorCode;
+      message?: string;
+      recoveryTo: RecoveryTarget;
+      /** Carry the flow forward so retry of progress-stage errors can
+       *  re-run handlePublish without re-prompting the user. */
+      flow?: FlowStart;
+    };
+
+// ─── IPC helpers ───────────────────────────────────────────────────────────
 
 function sendIpc(message: { type: string; [k: string]: unknown }): void {
   parent.postMessage({ pluginMessage: message }, '*');
 }
 
+// ─── Collected-data accumulator ────────────────────────────────────────────
+
+/** Per-publish-attempt buffer. Cleared at the start of every handlePublish
+ *  (so retry doesn't double-up bytes from a previous failed attempt). */
+interface CollectedBuffer {
+  /** From `hotspots-collected` — the rest of the wire payload. */
+  fileKey: string;
+  fileName: string;
+  startingFrameId: string;
+  hotspots: SandboxHotspot[];
+  warnings: SandboxWarning[];
+  /** Map keyed by `${frameId}@${scale}` containing the bytes plus the
+   *  frame's metadata (name, width, height, position). Updated for every
+   *  `frame-rendered` IPC. */
+  framesByKey: Map<
+    string,
+    {
+      frameId: string;
+      scale: 1 | 2;
+      bytes: ArrayBuffer;
+      name: string;
+      width: number;
+      height: number;
+      position: number;
+    }
+  >;
+  /** Reachable frame count from sandbox — used to detect "all 2× scales
+   *  arrived" before kicking off uploads. */
+  reachableCount: number;
+}
+
+function emptyBuffer(): CollectedBuffer {
+  return {
+    fileKey: '',
+    fileName: '',
+    startingFrameId: '',
+    hotspots: [],
+    warnings: [],
+    framesByKey: new Map(),
+    reachableCount: 0,
+  };
+}
+
+// ─── Workspace fetch ───────────────────────────────────────────────────────
+
+/** Fetch the user's first workspace. Phase 1 + 2 assume exactly one
+ *  workspace per designer (the auth trigger creates it on signup). Phase
+ *  6 will introduce multi-workspace UX — out of scope here. */
+async function fetchFirstWorkspaceId(): Promise<string | null> {
+  const { data: sess } = await supabase.auth.getSession();
+  const uid = sess.session?.user.id;
+  if (!uid) return null;
+  const { data, error } = await supabase
+    .from('memberships')
+    .select('workspace_id')
+    .eq('user_id', uid)
+    .limit(1)
+    .maybeSingle();
+  if (error || !data) return null;
+  return (data as { workspace_id: string }).workspace_id;
+}
+
+// ─── App component ────────────────────────────────────────────────────────
+
 function App() {
   const [screen, setScreen] = useState<Screen>({ kind: 'loading' });
 
-  // === Effect 1: inject the global stylesheet ONCE on mount.
+  // Idempotency key + prototype-version-id: generated ONCE per publish
+  // attempt at handlePublish entry. The key resets when the user returns
+  // from success → new publish (so each publish is independent), so we
+  // hold them in refs (don't trigger re-renders).
+  const idempotencyKeyRef = useRef<string | null>(null);
+  const prototypeVersionIdRef = useRef<string | null>(null);
+
+  // Collected sandbox data (per-attempt buffer).
+  const collectedRef = useRef<CollectedBuffer>(emptyBuffer());
+
+  // Cached workspace id (fetched once after sign-in).
+  const workspaceIdRef = useRef<string | null>(null);
+
+  // Inject the stylesheet ONCE.
   useEffect(() => {
     const style = document.createElement('style');
     style.textContent = cssString;
@@ -69,81 +204,378 @@ function App() {
     };
   }, []);
 
-  // === Effect 2: silent cached-session reuse on first mount (D-02b).
+  // Silent cached-session restore on mount.
   useEffect(() => {
     void (async () => {
       const ok = await restoreCachedSession();
-      setScreen(ok ? { kind: 'paste-url' } : { kind: 'sign-in' });
+      if (!ok) {
+        setScreen({ kind: 'sign-in' });
+        return;
+      }
+      const wsId = await fetchFirstWorkspaceId();
+      if (!wsId) {
+        setScreen({
+          kind: 'error',
+          code: 'plugin_rpc_failed',
+          message: 'Не удалось определить ваш воркспейс. Создайте его в Maxytest и войдите снова.',
+          recoveryTo: 'sign-in',
+        });
+        return;
+      }
+      workspaceIdRef.current = wsId;
+      setScreen({ kind: 'picker', flows: null });
+      sendIpc({ type: 'detect-flows' });
     })();
   }, []);
 
-  // === Effect 3: Esc closes the plugin (UI-SPEC §"Interaction Details").
+  // Esc closes the plugin.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        sendIpc({ type: 'close' });
-      }
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') sendIpc({ type: 'close' });
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const closePlugin = () => sendIpc({ type: 'close' });
-  const openHelp = () => sendIpc({ type: 'open-external', url: HELP_URL });
+  // Sandbox → UI IPC listener.
+  useEffect(() => {
+    function onMessage(ev: MessageEvent): void {
+      const data = ev.data as { pluginMessage?: { type?: string; [k: string]: unknown } };
+      const msg = data?.pluginMessage;
+      if (!msg || typeof msg.type !== 'string') return;
 
-  // ─── Flow callbacks ────────────────────────────────────────────────────
+      switch (msg.type) {
+        case 'flows-result': {
+          const flows = (msg.flows ?? []) as FlowStart[];
+          setScreen({ kind: 'picker', flows });
+          return;
+        }
+        case 'hotspots-collected': {
+          // Cache the BFS output for the upcoming RPC call.
+          const m = msg as {
+            fileKey: string;
+            fileName: string;
+            startingFrameId: string;
+            reachableCount: number;
+            hotspots: SandboxHotspot[];
+            warnings: SandboxWarning[];
+          };
+          collectedRef.current.fileKey = m.fileKey;
+          collectedRef.current.fileName = m.fileName;
+          collectedRef.current.startingFrameId = m.startingFrameId;
+          collectedRef.current.hotspots = m.hotspots;
+          collectedRef.current.warnings = m.warnings;
+          collectedRef.current.reachableCount = m.reachableCount;
+          return;
+        }
+        case 'frame-rendered': {
+          const m = msg as {
+            frameId: string;
+            scale: 1 | 2;
+            bytes: ArrayBuffer;
+            name: string;
+            width: number;
+            height: number;
+            position: number;
+          };
+          const key = `${m.frameId}@${m.scale}`;
+          collectedRef.current.framesByKey.set(key, {
+            frameId: m.frameId,
+            scale: m.scale,
+            bytes: m.bytes,
+            name: m.name,
+            width: m.width,
+            height: m.height,
+            position: m.position,
+          });
 
-  /**
-   * paste-url → choose-proto.
-   *
-   * Real implementation (Plan 02.2-07): post `{type:'inspect-url', url}` to
-   * the sandbox, which parses prototype frames out of the active Figma file
-   * (sandbox-side) OR falls back to a REST inspection. Sandbox replies with
-   * `{type:'inspect-result', prototypes:[{id,name}, …]}` over postMessage.
-   *
-   * For Plan 02.3-06 (this commit) we stub: a single prototype synthesised
-   * from the URL's file-key segment, so the UI flow is exerciseable in
-   * browser preview before the import pipeline lands.
-   */
-  const onUrlContinue = (url: string) => {
-    const fileKey = extractFileKey(url) ?? 'prototype';
-    const prototypes: PrototypeChoice[] = [{ id: fileKey, name: deriveName(fileKey) }];
-    setScreen({ kind: 'choose-proto', url, prototypes });
-  };
+          // When all 2 × N frames are accumulated, kick off uploads.
+          const expected = collectedRef.current.reachableCount * 2;
+          if (expected > 0 && collectedRef.current.framesByKey.size === expected) {
+            // Defer the upload run to a microtask so this handler returns
+            // promptly and the setScreen below isn't called inside the
+            // message-dispatch frame (some Figma sandbox builds get fussy
+            // about same-tick postMessage roundtrips).
+            void onAllFramesRendered();
+          }
+          return;
+        }
+        case 'progress': {
+          const p = msg as {
+            stage: 'parsing' | 'rendering' | 'uploading' | 'publishing';
+            done: number;
+            total: number;
+          };
+          setScreen((prev) => {
+            if (prev.kind !== 'progress') return prev;
+            return { ...prev, stage: p.stage, done: p.done, total: p.total };
+          });
+          return;
+        }
+        case 'import-error': {
+          const e = msg as { code: PluginErrorCode; message: string };
+          setScreen((prev) => ({
+            kind: 'error',
+            code: e.code,
+            message: e.message,
+            recoveryTo: e.code === 'plugin_no_prototype' ? 'picker' : 'progress',
+            flow: prev.kind === 'progress' || prev.kind === 'error' ? prev.flow : undefined,
+          }));
+          return;
+        }
+        default:
+          // Other IPC types (storage-reply, etc.) are handled by other
+          // listeners. No action here.
+          return;
+      }
+    }
 
-  /**
-   * choose-proto → importing → success | error.
-   *
-   * Real implementation (Plan 02.2-07): post `{type:'publish-prototype',
-   * url, prototypeId, optimizeImages}` to the sandbox; sandbox calls
-   * `publish_prototype_from_plugin` RPC + uploads frame PNGs; replies with
-   * `{type:'publish-success', shareCode}` or `{type:'publish-error',
-   * code, message}`.
-   *
-   * Stub for Plan 02.3-06: 1.4s simulated work, then either success with a
-   * deterministic 6-char code derived from the prototype id, or error if
-   * the URL contains the literal substring "error-demo" (handy for visual
-   * QA of the error branch).
-   */
-  const onImport = (proto: PrototypeChoice, _optimizeImages: boolean) => {
-    setScreen({ kind: 'importing' });
-    // TODO Plan 02.2-07: replace setTimeout stub with sandbox IPC roundtrip.
-    setTimeout(() => {
-      if ((screen as { url?: string }).url?.includes('error-demo')) {
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, []);
+
+  // ─── Flow callbacks ─────────────────────────────────────────────────────
+
+  /** Convert the framesByKey Map into CollectedFrameBytes[]. Pairs
+   *  (frameId, 1) + (frameId, 2) into a single entry per frame; orders
+   *  by sandbox-assigned `position` so downstream code sees BFS-preorder. */
+  function collectFrameBytes(): CollectedFrameBytes[] {
+    const byFrameId = new Map<
+      string,
+      Partial<CollectedFrameBytes> & {
+        bytes1x?: ArrayBuffer;
+        bytes2x?: ArrayBuffer;
+      }
+    >();
+    for (const entry of collectedRef.current.framesByKey.values()) {
+      const cur = byFrameId.get(entry.frameId) ?? {
+        frameId: entry.frameId,
+        name: entry.name,
+        width: entry.width,
+        height: entry.height,
+        position: entry.position,
+      };
+      cur.name = entry.name;
+      cur.width = entry.width;
+      cur.height = entry.height;
+      cur.position = entry.position;
+      if (entry.scale === 1) cur.bytes1x = entry.bytes;
+      else cur.bytes2x = entry.bytes;
+      byFrameId.set(entry.frameId, cur);
+    }
+    const out: CollectedFrameBytes[] = [];
+    for (const v of byFrameId.values()) {
+      if (!v.bytes1x || !v.bytes2x) continue;
+      out.push({
+        frameId: v.frameId!,
+        name: v.name!,
+        width: v.width!,
+        height: v.height!,
+        position: v.position!,
+        bytes1x: v.bytes1x,
+        bytes2x: v.bytes2x,
+      });
+    }
+    return out.sort((a, b) => a.position - b.position);
+  }
+
+  /** Called when the sandbox has finished rendering all reachable frames.
+   *  Kicks off uploads + RPC. Errors transition to S5 with a recovery code. */
+  async function onAllFramesRendered(): Promise<void> {
+    const wsId = workspaceIdRef.current;
+    const idem = idempotencyKeyRef.current;
+    const pvId = prototypeVersionIdRef.current;
+    const flow = screenFlow();
+    if (!wsId || !idem || !pvId || !flow) {
+      setScreen({
+        kind: 'error',
+        code: 'unknown_error',
+        message: 'Внутреннее состояние плагина не готово к публикации',
+        recoveryTo: 'picker',
+      });
+      return;
+    }
+
+    // Create the study now — the RPC requires an existing study_id.
+    const flowName = `${flow.pageName} → ${flow.nodeName}`;
+    let studyId: string;
+    try {
+      const title = `${collectedRef.current.fileName} — ${flowName}`.slice(0, 120);
+      const { data, error } = await supabase.rpc('create_study', {
+        ws_id: wsId,
+        study_title: title,
+      });
+      if (error || !data) {
         setScreen({
           kind: 'error',
-          protoName: proto.name,
-          heading: 'Возникла ошибка во время импорта прототипа',
-          body: 'Доступ к прототипу ограничен. Открой настройки шеринга в Figma и поставь «Anyone with the link can view».',
+          code: 'plugin_rpc_failed',
+          message: error?.message ?? 'Не удалось создать study',
+          recoveryTo: 'progress',
+          flow,
         });
         return;
       }
-      const shareCode = makeShareCode(proto.id);
-      setScreen({ kind: 'success', shareCode });
-    }, 1400);
-  };
+      studyId = data as string;
+    } catch (err) {
+      setScreen({
+        kind: 'error',
+        code: 'plugin_rpc_failed',
+        message: String(err),
+        recoveryTo: 'progress',
+        flow,
+      });
+      return;
+    }
 
-  // ─── Render branches ───────────────────────────────────────────────────
+    const frames = collectFrameBytes();
+    const framesCount = frames.length;
+    const hotspotsCount = collectedRef.current.hotspots.length;
+
+    setScreen({
+      kind: 'progress',
+      flow,
+      stage: 'uploading',
+      done: 0,
+      total: framesCount * 2,
+    });
+
+    const result = await publishCollected({
+      workspaceId: wsId,
+      studyId,
+      prototypeVersionId: pvId,
+      idempotencyKey: idem,
+      fileKey: collectedRef.current.fileKey,
+      fileName: collectedRef.current.fileName,
+      startingFrameId: collectedRef.current.startingFrameId,
+      frames,
+      hotspots: collectedRef.current.hotspots,
+      warnings: collectedRef.current.warnings,
+      onUploadProgress: (done, total) => {
+        setScreen((prev) => {
+          if (prev.kind !== 'progress') return prev;
+          return { ...prev, stage: 'uploading', done, total };
+        });
+      },
+      onPublishStart: () => {
+        setScreen((prev) => {
+          if (prev.kind !== 'progress') return prev;
+          return { ...prev, stage: 'publishing', done: 0, total: 1 };
+        });
+      },
+    });
+
+    if (!result.ok) {
+      setScreen({
+        kind: 'error',
+        code: result.code,
+        message: result.message,
+        recoveryTo: 'progress',
+        flow,
+      });
+      return;
+    }
+
+    const deepLinkUrl = `${process.env.VIEWER_URL}/studies/${result.data.study_id}/edit`;
+    setScreen({
+      kind: 'success',
+      flow,
+      framesCount,
+      hotspotsCount,
+      replayed: result.data.replayed,
+      deepLinkUrl,
+    });
+  }
+
+  /** Helper: extract the current flow from whichever screen carries one. */
+  function screenFlow(): FlowStart | undefined {
+    if (screen.kind === 'progress') return screen.flow;
+    if (screen.kind === 'success') return screen.flow;
+    if (screen.kind === 'error') return screen.flow;
+    return undefined;
+  }
+
+  /** Begin a publish attempt. Generates idempotencyKey + prototypeVersionId
+   *  (or reuses if `retry === true`). */
+  function handlePublish(flow: FlowStart, retry: boolean): void {
+    if (!retry || !idempotencyKeyRef.current) {
+      idempotencyKeyRef.current = uuidv7();
+    }
+    if (!retry || !prototypeVersionIdRef.current) {
+      prototypeVersionIdRef.current = uuidv7();
+    }
+    // Fresh per-attempt buffer (unless retrying a progress-stage error,
+    // in which case we keep the already-collected hotspots/frames).
+    if (!retry) {
+      collectedRef.current = emptyBuffer();
+    }
+    setScreen({
+      kind: 'progress',
+      flow,
+      stage: 'parsing',
+      done: 0,
+      total: 1,
+    });
+    sendIpc({
+      type: 'start-import',
+      flowNodeId: flow.nodeId,
+      pageId: flow.pageId,
+      prototypeVersionId: prototypeVersionIdRef.current,
+    });
+  }
+
+  function handleRefresh(): void {
+    setScreen({ kind: 'picker', flows: null });
+    sendIpc({ type: 'detect-flows' });
+  }
+
+  async function handleSignOut(): Promise<void> {
+    await signOut();
+    idempotencyKeyRef.current = null;
+    prototypeVersionIdRef.current = null;
+    workspaceIdRef.current = null;
+    collectedRef.current = emptyBuffer();
+    setScreen({ kind: 'sign-in' });
+  }
+
+  function handleBackFromSuccess(): void {
+    // Regenerate keys so a new publish is independent (UI-SPEC §"Screen
+    // S4 Interactions").
+    idempotencyKeyRef.current = null;
+    prototypeVersionIdRef.current = null;
+    collectedRef.current = emptyBuffer();
+    setScreen({ kind: 'picker', flows: null });
+    sendIpc({ type: 'detect-flows' });
+  }
+
+  function handleOpenInMaxytest(deepLinkUrl: string): void {
+    // Synchronous IPC inside the click handler — Pitfall 3.
+    sendIpc({ type: 'open-external', url: deepLinkUrl });
+  }
+
+  function handleRetryFromError(): void {
+    if (screen.kind !== 'error') return;
+    const { recoveryTo, flow } = screen;
+    if (recoveryTo === 'sign-in') {
+      void handleSignOut();
+      return;
+    }
+    if (recoveryTo === 'picker') {
+      handleRefresh();
+      return;
+    }
+    if (recoveryTo === 'progress' && flow) {
+      handlePublish(flow, /* retry */ true);
+      return;
+    }
+    // Fallback — go to picker.
+    handleRefresh();
+  }
+
+  function openHelp(): void {
+    sendIpc({ type: 'open-external', url: HELP_URL });
+  }
+
+  // ─── Render branches ────────────────────────────────────────────────────
 
   return (
     <div
@@ -170,177 +602,133 @@ function App() {
 
       {screen.kind === 'sign-in' && (
         <>
-          <PluginHeader onClose={closePlugin} />
-          <SignInView onSignedIn={() => setScreen({ kind: 'paste-url' })} />
-        </>
-      )}
-
-      {screen.kind === 'paste-url' && (
-        <>
-          <PluginHeader onClose={closePlugin} />
-          <PasteUrlView onContinue={onUrlContinue} />
-        </>
-      )}
-
-      {screen.kind === 'choose-proto' && (
-        <>
-          <PluginHeader onClose={closePlugin} />
-          <ChoosePrototypeView
-            prototypes={screen.prototypes}
-            onBack={() => setScreen({ kind: 'paste-url' })}
-            onImport={onImport}
-            onHelp={openHelp}
+          <PluginHeader onClose={() => sendIpc({ type: 'close' })} />
+          <SignInView
+            onSignedIn={() => {
+              void (async () => {
+                const wsId = await fetchFirstWorkspaceId();
+                if (!wsId) {
+                  setScreen({
+                    kind: 'error',
+                    code: 'plugin_rpc_failed',
+                    message:
+                      'Не удалось определить ваш воркспейс. Создайте его в Maxytest и войдите снова.',
+                    recoveryTo: 'sign-in',
+                  });
+                  return;
+                }
+                workspaceIdRef.current = wsId;
+                setScreen({ kind: 'picker', flows: null });
+                sendIpc({ type: 'detect-flows' });
+              })();
+            }}
           />
         </>
       )}
 
-      {screen.kind === 'importing' && (
+      {screen.kind === 'picker' && (
         <>
-          <PluginHeader onClose={closePlugin} />
-          <main
-            style={{
-              flex: 1,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 16,
-              padding: 20,
-              background: '#FFFFFF',
-            }}
-          >
-            <DotsLoader />
-            <p
-              role="status"
-              aria-live="polite"
+          <PluginHeader onClose={() => sendIpc({ type: 'close' })} />
+          {screen.flows === null ? (
+            <main
               style={{
-                font: '500 14px/20px var(--font-sans, "IBM Plex Sans"), system-ui',
-                color: '#6B7280',
-                margin: 0,
+                flex: 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
               }}
             >
-              Импортирую прототип…
-            </p>
-            <p
-              style={{
-                font: '400 12px/18px var(--font-sans, "IBM Plex Sans"), system-ui',
-                color: '#9CA3AF',
-                margin: 0,
-                textAlign: 'center',
-                maxWidth: 260,
-              }}
-            >
-              Парсю фреймы, рендерю PNG, загружаю в Maxytest. Обычно 5-15 секунд.
-            </p>
-          </main>
+              <DotsLoader />
+            </main>
+          ) : (
+            <PrototypePickerView
+              flows={screen.flows}
+              onPublish={(flow) => handlePublish(flow, /* retry */ false)}
+              onRefresh={handleRefresh}
+              onSignOut={() => void handleSignOut()}
+            />
+          )}
+        </>
+      )}
+
+      {screen.kind === 'progress' && (
+        <>
+          <PluginHeader onClose={() => sendIpc({ type: 'close' })} />
+          <ProgressView
+            flowName={`${screen.flow.pageName} → ${screen.flow.nodeName}`}
+            stage={screen.stage}
+            done={screen.done}
+            total={screen.total}
+          />
         </>
       )}
 
       {screen.kind === 'success' && (
         <>
-          <PluginHeader onClose={closePlugin} />
-          {/* Plan 07 Task 3 rewrote SuccessView to use the deep-link contract.
-              The full ui.tsx rewrite lands in Task 4 — this stub keeps
-              typecheck green for the intermediate commit by passing
-              placeholder values. Real state-machine wiring comes next. */}
+          <PluginHeader onClose={() => sendIpc({ type: 'close' })} />
           <SuccessView
-            flowName={`Plan 07 placeholder: ${screen.shareCode}`}
-            framesCount={0}
-            hotspotsCount={0}
-            replayed={false}
-            deepLinkUrl=""
-            onOpen={() => {}}
-            onBack={() => setScreen({ kind: 'paste-url' })}
-            onSignOut={() => {}}
+            flowName={`${screen.flow.pageName} → ${screen.flow.nodeName}`}
+            framesCount={screen.framesCount}
+            hotspotsCount={screen.hotspotsCount}
+            replayed={screen.replayed}
+            deepLinkUrl={screen.deepLinkUrl}
+            onOpen={() => handleOpenInMaxytest(screen.deepLinkUrl)}
+            onBack={handleBackFromSuccess}
+            onSignOut={() => void handleSignOut()}
           />
         </>
       )}
 
       {screen.kind === 'error' && (
         <>
-          <PluginHeader onClose={closePlugin} />
-          <ImportErrorView
-            protoName={screen.protoName}
-            errorHeading={screen.heading}
-            errorBody={screen.body}
-            onRetry={() => setScreen({ kind: 'paste-url' })}
+          <PluginHeader onClose={() => sendIpc({ type: 'close' })} />
+          <ErrorScreen
+            code={screen.code}
+            message={screen.message}
+            onRetry={handleRetryFromError}
+            onHelp={openHelp}
           />
         </>
-      )}
-
-      {/* Sign-out affordance — only when signed in, away from the error path. */}
-      {(screen.kind === 'paste-url' ||
-        screen.kind === 'choose-proto' ||
-        screen.kind === 'success') && (
-        <SignOutPill
-          onClick={async () => {
-            await signOut();
-            setScreen({ kind: 'sign-in' });
-          }}
-        />
       )}
     </div>
   );
 }
 
-// ─── Helpers ────────────────────────────────────────────────────────────
+// ─── Error screen ─────────────────────────────────────────────────────────
 
-/** Extract Figma file key from a share URL. Returns undefined if no match. */
-function extractFileKey(url: string): string | undefined {
-  const m = url.match(/figma\.com\/(?:file|design|proto)\/([A-Za-z0-9]+)/);
-  return m?.[1];
-}
-
-/** Derive a human display name from a file key for the stub flow. */
-function deriveName(fileKey: string): string {
-  return fileKey.length > 10 ? `${fileKey.slice(0, 8)}…` : fileKey;
-}
-
-/** Deterministic 6-char share code from a prototype id (stub only). */
-function makeShareCode(id: string): string {
-  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) {
-    hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
-  }
-  let out = '';
-  for (let i = 0; i < 6; i++) {
-    out += chars[hash % chars.length];
-    hash = Math.floor(hash / chars.length);
-  }
-  return out;
-}
-
-// ─── SignOut affordance ─────────────────────────────────────────────────
-
-function SignOutPill({ onClick }: { onClick: () => void }) {
+function ErrorScreen({
+  code,
+  message,
+  onRetry,
+}: {
+  code: PluginErrorCode;
+  message?: string;
+  onRetry: () => void;
+  onHelp: () => void;
+}) {
+  const fr = getFriendlyError(code);
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <main
       style={{
-        position: 'absolute',
-        right: 12,
-        bottom: 12,
-        height: 28,
-        padding: '0 12px',
-        background: 'transparent',
-        color: '#9CA3AF',
-        border: '1px solid #E5E7EB',
-        borderRadius: 999,
-        font: '500 11px/16px var(--font-mono, "IBM Plex Mono"), monospace',
-        letterSpacing: '0.04em',
-        textTransform: 'uppercase',
-        cursor: 'pointer',
-        transition: 'border-color 120ms cubic-bezier(.2,.7,.3,1)',
+        flex: 1,
+        padding: 8,
+        display: 'flex',
+        flexDirection: 'column',
+        background: '#FFFFFF',
       }}
-      onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--color-accent)')}
-      onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#E5E7EB')}
     >
-      Выйти
-    </button>
+      <ErrorCard
+        code={code}
+        title={fr.title}
+        message={message && message !== fr.title ? `${fr.message}` : fr.message}
+        onRetry={onRetry}
+        retryLabel={fr.retryLabel}
+      />
+    </main>
   );
 }
+
+// ─── Mount ────────────────────────────────────────────────────────────────
 
 const rootEl = document.getElementById('root');
 if (rootEl) {
