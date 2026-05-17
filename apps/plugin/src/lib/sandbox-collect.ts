@@ -32,7 +32,12 @@
 //     so we hand over an ArrayBuffer (not a Uint8Array view) — this
 //     avoids any "detached buffer" hazards on retries.
 
-import { walkReachable, type BfsNode } from './bfs';
+import {
+  collectSubtreeNavReactions,
+  walkReachable,
+  type BfsNode,
+  type ReactionsTreeNode,
+} from './bfs';
 import type { FlowDetectionInput } from './flow-detection';
 // (sha256_16 used to be imported here for a runtime probe; the probe was
 // removed when we discovered Figma's sandbox has no `crypto` global at
@@ -152,39 +157,98 @@ export function serializeFlowDetectionInput(): FlowDetectionInput {
 }
 
 /**
- * Walk every descendant of the given page that has a `.reactions` array
- * (FrameNode, ComponentNode, InstanceNode and even GroupNode in some
- * recent Figma releases). Build a Map keyed by node id whose values are
- * the BfsNode shape walkReachable() expects.
+ * Build the reactions graph that the BFS walker consumes. Recursively walks
+ * every descendant of the given page and writes one entry per node.
  *
- * We include ALL reaction-carrying descendants — not just top-level
- * frames — because Figma reactions can sit on any nested layer (a button
- * inside a card inside a section). The BFS walker only follows actions
- * whose action.type is NAVIGATE/OPEN_OVERLAY/SWAP_OVERLAY, but it needs
- * the full reaction list to determine that.
+ * The KEY contract — the two distinct entry shapes:
+ *
+ *   1. For every FRAME / COMPONENT / INSTANCE encountered (at ANY depth —
+ *      direct page child, nested inside a Section, nested inside another
+ *      frame, etc.), the entry's `reactions` is the AGGREGATED set of
+ *      navigation reactions found anywhere in that node's subtree (the
+ *      node's own reactions PLUS every descendant layer that carries
+ *      `.reactions`). This is the load-bearing fix for KI-02
+ *      (2026-05-17 Smart-email UAT) — Figma reactions almost always live
+ *      on descendant buttons, not on the top-level frame, and without this
+ *      aggregation `walkReachable` stops at the start frame with zero
+ *      navigation edges.
+ *
+ *   2. For every non-frame node that DOES carry its own `.reactions` array
+ *      (rare — historically Groups, some Section configurations), the entry
+ *      holds that node's own reactions only. This preserves backwards
+ *      compatibility with the pre-2026-05-17 behavior of mapping every
+ *      reaction-carrying descendant by id.
+ *
+ * Why recurse instead of just iterating page.children: modern Figma puts
+ * frames inside Sections. A prototype's starting frame may sit at
+ * `page.children → Section → FrameNode`. If we only looked at direct page
+ * children, the start frame would be missing from the map and BFS would
+ * fail with "Starting frame has no reachable frames via reactions" — the
+ * regression that surfaced in the 2026-05-17 follow-up UAT after the
+ * initial KI-02 fix landed.
+ *
+ * Aggregation logic lives in the pure helper `collectSubtreeNavReactions`
+ * (apps/plugin/src/lib/bfs.ts) so it is unit-testable without `figma.*`
+ * globals. This function is the thin sandbox-side adapter that serializes
+ * each frame's subtree into the plain-data shape the helper expects.
  */
 export function collectReactionsGraph(pageId: string): Map<string, BfsNode> {
   const out = new Map<string, BfsNode>();
   const page = figma.root.children.find((p) => p.id === pageId);
   if (!page || page.type !== 'PAGE') return out;
 
-  function visit(node: SceneNode): void {
-    // 'reactions' exists on FrameNode | ComponentNode | InstanceNode |
-    // ComponentSetNode (and a few others) — we test the field rather
-    // than enumerating types so future Figma API additions don't fall
-    // through the cracks.
+  /** Serialize a Figma subtree into the plain-data `ReactionsTreeNode`
+   *  shape that `collectSubtreeNavReactions` consumes. We normalize the
+   *  modern Plugin-API reaction shape (`type: 'NODE'` + `navigation`)
+   *  into the legacy string-literal shape (`type: 'NAVIGATE'`, etc.) at
+   *  this seam so the pure helper only ever sees one canonical form. */
+  function toTreeNode(node: SceneNode): ReactionsTreeNode {
     const maybeReactions = (node as unknown as { reactions?: ReadonlyArray<Reaction> }).reactions;
-    if (Array.isArray(maybeReactions)) {
-      const reactions: BfsNode['reactions'] = maybeReactions.map((r) => {
-        const nav = asNavAction(r.action);
-        return {
-          action: nav ? { type: nav.type, destinationId: nav.destinationId ?? null } : null,
-        };
-      });
-      out.set(node.id, { id: node.id, reactions });
+    const reactions: ReactionsTreeNode['reactions'] = Array.isArray(maybeReactions)
+      ? maybeReactions.map((r) => {
+          const nav = asNavAction(r.action);
+          return {
+            action: nav ? { type: nav.type, destinationId: nav.destinationId ?? null } : null,
+          };
+        })
+      : [];
+
+    const maybeChildren = (node as unknown as { children?: ReadonlyArray<SceneNode> }).children;
+    const children: ReactionsTreeNode['children'] = Array.isArray(maybeChildren)
+      ? maybeChildren.map(toTreeNode)
+      : undefined;
+
+    return { id: node.id, reactions, children };
+  }
+
+  /** Recursive visitor — writes the appropriate entry shape for each node
+   *  and continues into children regardless of node type. The "frame-like
+   *  → aggregated, other → own-reactions" branching is the heart of
+   *  KI-02's fix. */
+  function visit(node: SceneNode): void {
+    if (node.type === 'FRAME' || node.type === 'COMPONENT' || node.type === 'INSTANCE') {
+      // Frame-like: write the aggregated subtree entry. This is a SUPERSET
+      // of the frame's own reactions (collectSubtreeNavReactions starts at
+      // the root node), so we don't need a separate own-reactions branch
+      // for frames.
+      const aggregated = collectSubtreeNavReactions(toTreeNode(node));
+      out.set(node.id, { id: node.id, reactions: aggregated });
+    } else {
+      // Non-frame node — write its own reactions only IF it has any. The
+      // recursion below will pick up any frame-like descendants and write
+      // their aggregated entries.
+      const maybeReactions = (node as unknown as { reactions?: ReadonlyArray<Reaction> }).reactions;
+      if (Array.isArray(maybeReactions) && maybeReactions.length > 0) {
+        const reactions: BfsNode['reactions'] = maybeReactions.map((r) => {
+          const nav = asNavAction(r.action);
+          return {
+            action: nav ? { type: nav.type, destinationId: nav.destinationId ?? null } : null,
+          };
+        });
+        out.set(node.id, { id: node.id, reactions });
+      }
     }
-    // Recurse — only nodes with children iterate; SceneNode union covers
-    // most container types in newer Plugin API versions.
+
     const maybeChildren = (node as unknown as { children?: ReadonlyArray<SceneNode> }).children;
     if (Array.isArray(maybeChildren)) {
       for (const child of maybeChildren) visit(child);

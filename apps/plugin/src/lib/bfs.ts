@@ -21,10 +21,61 @@ export interface BfsNode {
   reactions: Array<{ action?: { type?: string; destinationId?: string | null } | null }>;
 }
 
+/** Plain-data shape of a Figma node that may carry reactions and may have
+ *  children with their own reactions. Used by `collectSubtreeNavReactions`
+ *  so the aggregation logic is figma-free and unit-testable. The sandbox
+ *  caller (sandbox-collect.ts) serializes a real Figma subtree into this
+ *  shape before invoking the helper. */
+export interface ReactionsTreeNode {
+  id: string;
+  reactions: ReadonlyArray<{
+    action?: { type?: string; destinationId?: string | null } | null;
+  }>;
+  children?: ReadonlyArray<ReactionsTreeNode>;
+}
+
 /** Navigation action types that count as graph edges. CLOSE_OVERLAY is
  *  explicitly NOT in here (its destinationId is null and it pops the
  *  overlay stack — not a navigation to a new frame). */
 const NAV_ACTIONS = new Set<string>(['NAVIGATE', 'OPEN_OVERLAY', 'SWAP_OVERLAY']);
+
+/**
+ * Walk a subtree (the FRAME-like node + all its descendants) and return
+ * the union of navigation reactions found anywhere inside it.
+ *
+ * Why this exists: in Figma, prototype reactions are almost always attached
+ * to descendant layers (buttons, cards), NOT to the top-level frame.
+ * `walkReachable` only follows reactions on the node it is currently
+ * visiting, so if the BFS graph entry for a frame carries only the frame's
+ * own (empty) reactions, BFS stops at the start frame and never discovers
+ * any destinations. This helper aggregates a frame's effective outgoing
+ * edges by pulling reactions from every descendant whose `.reactions` is
+ * populated — so the BfsNode the walker sees for that frame correctly
+ * represents "everywhere the user can navigate to from here".
+ *
+ * Only navigation actions are kept (NAVIGATE / OPEN_OVERLAY / SWAP_OVERLAY).
+ * The caller is expected to have normalized modern Plugin API shapes
+ * (action.type === 'NODE' + action.navigation) into these strings before
+ * building the input — see `asNavAction` in sandbox-collect.ts.
+ */
+export function collectSubtreeNavReactions(root: ReactionsTreeNode): BfsNode['reactions'] {
+  const out: BfsNode['reactions'] = [];
+  function visit(node: ReactionsTreeNode): void {
+    for (const r of node.reactions) {
+      const action = r.action;
+      if (!action) continue;
+      const t = action.type;
+      if (t && NAV_ACTIONS.has(t)) {
+        out.push({ action: { type: t, destinationId: action.destinationId ?? null } });
+      }
+    }
+    if (node.children) {
+      for (const child of node.children) visit(child);
+    }
+  }
+  visit(root);
+  return out;
+}
 
 /**
  * BFS from `startId`, returning the list of visited node IDs in BFS order.
