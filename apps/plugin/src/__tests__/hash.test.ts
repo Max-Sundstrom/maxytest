@@ -46,17 +46,26 @@ describe('sha256_16', () => {
     expect(result).toBe('4c4b6a3be1314ab8');
   });
 
-  it('Test 4: cross-check vs Node crypto — same algorithm, same output (byte-identity proof)', async () => {
-    const { createHash } = await import('node:crypto');
-    // 256 bytes of pseudo-random data — exercises every digest position.
+  it('Test 4: pseudo-random 256-byte fixture matches precomputed Node-crypto hex (byte-identity proof)', async () => {
+    // 256 bytes of deterministic pseudo-random data — exercises every digest
+    // position. Expected hex precomputed via Node crypto (the same SHA-256
+    // implementation the Edge Function runtime uses) so this assertion
+    // proves that crypto.subtle.digest in the plugin runtime (which is the
+    // same Web Crypto API the worker uses) returns byte-identical output:
+    //
+    //   node -e "const c=require('crypto'); const b=new Uint8Array(256);
+    //     for(let i=0;i<256;i++) b[i]=(i*31+7)&0xff;
+    //     console.log(c.createHash('sha256').update(Buffer.from(b))
+    //       .digest('hex').slice(0,16))"
+    //   // → 'c8c6e02d597fa6c4'
+    //
+    // We DO NOT import node:crypto at runtime here — the plugin workspace
+    // does not depend on @types/node, and the typecheck must stay green
+    // (the precomputed value is the cheaper guarantee for the same proof).
     const bytes = new Uint8Array(256);
     for (let i = 0; i < 256; i++) bytes[i] = (i * 31 + 7) & 0xff;
-    const buf = bytes.buffer as ArrayBuffer;
-
-    const fromPlugin = await sha256_16(buf);
-    const fromNode = createHash('sha256').update(Buffer.from(bytes)).digest('hex').slice(0, 16);
-
-    expect(fromPlugin).toBe(fromNode);
+    const result = await sha256_16(bytes.buffer as ArrayBuffer);
+    expect(result).toBe('c8c6e02d597fa6c4');
   });
 
   it('Test 5: always returns exactly 16 characters regardless of input size', async () => {
