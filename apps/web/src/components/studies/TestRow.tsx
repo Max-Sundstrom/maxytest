@@ -38,6 +38,19 @@ export interface TestRowProps {
   workspaceId: string | null;
   responseCount?: number;
   active?: boolean;
+  /**
+   * Multi-select state. When true the row renders the moss-tinted
+   * "checked" look; the caller manages the selection Set in route state
+   * (Phase 02.3 follow-up — drag-to-folder UX).
+   */
+  selected?: boolean;
+  /**
+   * Optional override for the row's click handler. The route passes this
+   * to differentiate plain-click (navigate to /edit) from shift- and
+   * cmd/ctrl-click (mutate the selection set). When omitted, the row
+   * falls back to its default navigate-to-edit behaviour.
+   */
+  onRowClick?: (study: StudyRow, evt: React.MouseEvent<HTMLDivElement>) => void;
   onArchiveRequest?: (study: StudyRow) => void;
 }
 
@@ -54,6 +67,8 @@ export function TestRow({
   workspaceId,
   responseCount = 0,
   active = false,
+  selected = false,
+  onRowClick,
   onArchiveRequest,
 }: TestRowProps) {
   const navigate = useNavigate() as unknown as LooseNavigate;
@@ -69,9 +84,24 @@ export function TestRow({
     navigate({ to: '/studies/$id/edit', params: { id: study.id } });
   };
 
+  // Effective border colour priority: selected wins over active wins over
+  // default. Selected also adds a moss-tinted background so a sea of
+  // selected rows visually parses as "a group" instead of just darker
+  // borders.
+  const borderColor = selected || active ? 'var(--color-accent)' : 'var(--border-1)';
+  const ringShadow = selected
+    ? '0 0 0 2px color-mix(in oklab, var(--color-accent) 28%, transparent)'
+    : active
+      ? '0 0 0 2px color-mix(in oklab, var(--color-accent) 20%, transparent)'
+      : 'none';
+  const background = selected
+    ? 'color-mix(in oklab, var(--color-accent) 8%, var(--bg-card))'
+    : 'var(--bg-card)';
+
   return (
     <div
       role="row"
+      aria-selected={selected || undefined}
       style={{
         display: 'grid',
         gridTemplateColumns: '1fr auto auto 28px',
@@ -79,23 +109,32 @@ export function TestRow({
         alignItems: 'center',
         padding: '0 16px',
         height: 48,
-        background: 'var(--bg-card)',
-        border: `1px solid ${active ? 'var(--color-accent)' : 'var(--border-1)'}`,
+        background,
+        border: `1px solid ${borderColor}`,
         borderRadius: 'var(--radius)',
-        boxShadow: active
-          ? '0 0 0 2px color-mix(in oklab, var(--color-accent) 20%, transparent)'
-          : 'none',
+        boxShadow: ringShadow,
         cursor: 'pointer',
         transition:
           'border-color 120ms cubic-bezier(.2,.7,.3,1), background 120ms cubic-bezier(.2,.7,.3,1)',
+        // Block native browser text-selection on shift+click — without this
+        // the OS draws a highlight ribbon across the row's text on every
+        // shift-click, which is jarring and competes with our own selected
+        // styling.
+        userSelect: 'none',
       }}
       onMouseEnter={(e) => {
-        if (!active) e.currentTarget.style.borderColor = 'var(--color-accent)';
+        if (!active && !selected) e.currentTarget.style.borderColor = 'var(--color-accent)';
       }}
       onMouseLeave={(e) => {
-        if (!active) e.currentTarget.style.borderColor = 'var(--border-1)';
+        if (!active && !selected) e.currentTarget.style.borderColor = 'var(--border-1)';
       }}
-      onClick={handleOpen}
+      onClick={(evt) => {
+        if (onRowClick) {
+          onRowClick(study, evt);
+          return;
+        }
+        handleOpen();
+      }}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
