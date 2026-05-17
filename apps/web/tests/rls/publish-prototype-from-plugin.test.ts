@@ -500,4 +500,161 @@ describe.skipIf(!rlsCredentialsAvailable)('publish_prototype_from_plugin RPC', (
     expect(hotspotRows![0].frame_id).toBe(secondFrameDbId);
     expect(hotspotRows![0].frame_id).not.toBe(firstFrameDbId);
   });
+
+  /* ------------------------------------------------------------------------ */
+  /* Test 8 — KI-01 fix: plugin publish creates prototype block at position 1 */
+  /* ------------------------------------------------------------------------ */
+  // Migration 00015 added step 7.5 to the RPC: after hotspots, ensure a
+  // prototype block exists for the study. For a freshly-created study that
+  // already has welcome@0 + thanks@1 (seeded by create_study), the RPC must
+  // shift thanks to position 2 and INSERT a prototype block at position 1.
+  // Before this fix, plugin SuccessView → "Open in Maxytest" deep-linked
+  // into a Builder that showed only welcome+thanks — the imported version
+  // existed in prototype_versions but no block referenced it.
+  it('Test 8 — KI-01: first plugin import inserts prototype block at position 1', async () => {
+    const client = userClient(designerA.jwt);
+    const admin = adminClient();
+
+    // Create a fresh study via the same RPC the plugin uses in production
+    // (create_study seeds welcome@0 + thanks@1, pinned=true on both).
+    const { data: freshStudyId, error: csErr } = await (client as any).rpc('create_study', {
+      ws_id: workspaceA,
+      study_title: 'KI-01 fresh study',
+    });
+    expect(csErr).toBeNull();
+    expect(typeof freshStudyId).toBe('string');
+
+    // Sanity: study starts with exactly welcome@0 + thanks@1.
+    const { data: before } = await admin
+      .from('blocks')
+      .select('id, position, type, pinned')
+      .eq('study_id', freshStudyId)
+      .order('position');
+    expect((before ?? []).length).toBe(2);
+    expect(before![0]).toMatchObject({ position: 0, type: 'welcome', pinned: true });
+    expect(before![1]).toMatchObject({ position: 1, type: 'thanks', pinned: true });
+
+    // Plugin publish.
+    const payload = makePayload(
+      freshStudyId,
+      workspaceA,
+      ['ki01-f1'],
+      [{ id: 'ki01-h1', parent: 'ki01-f1', target: 'ki01-f1' }],
+    );
+    const { data: pubData, error: pubErr } = await (client as any).rpc(
+      'publish_prototype_from_plugin',
+      { p_payload: payload, p_idempotency_key: uuidv7() },
+    );
+    expect(pubErr).toBeNull();
+    expect(pubData?.replayed).toBe(false);
+
+    // After publish — exactly 3 blocks, prototype@1, thanks shifted to @2.
+    const { data: after } = await admin
+      .from('blocks')
+      .select('id, position, type, pinned, content, version')
+      .eq('study_id', freshStudyId)
+      .order('position');
+    expect((after ?? []).length).toBe(3);
+
+    expect(after![0]).toMatchObject({ position: 0, type: 'welcome', pinned: true });
+    expect(after![1].position).toBe(1);
+    expect(after![1].type).toBe('prototype');
+    expect(after![1].pinned).toBe(false);
+    expect(after![2]).toMatchObject({ position: 2, type: 'thanks', pinned: true });
+
+    // Prototype block content must satisfy prototypeContentSchema.
+    const protoContent = after![1].content as Record<string, unknown>;
+    expect(protoContent.type).toBe('prototype');
+    expect(protoContent.prototype_version_id).toBe(payload.prototype_version_id);
+    expect(protoContent.starting_frame_id).toBe('ki01-f1');
+    expect(typeof protoContent.task_instruction).toBe('string');
+    expect((protoContent.task_instruction as string).length).toBeGreaterThan(0);
+    expect((protoContent.task_instruction as string).length).toBeLessThanOrEqual(280);
+  });
+
+  /* ------------------------------------------------------------------------ */
+  /* Test 9 — KI-01 fix: re-import updates existing prototype block in place  */
+  /* ------------------------------------------------------------------------ */
+  // A second publish into the SAME study with a DIFFERENT idempotency_key
+  // (so the step-4 replay branch does NOT fire) must NOT duplicate the
+  // prototype block. Instead it must UPDATE the existing one's content to
+  // point at the new prototype_version_id, while preserving the
+  // user-edited task_instruction via jsonb `||` merge.
+  it('Test 9 — KI-01: re-import updates existing prototype block, preserves task_instruction', async () => {
+    const client = userClient(designerA.jwt);
+    const admin = adminClient();
+
+    // Fresh study + first publish.
+    const { data: freshStudyId } = await (client as any).rpc('create_study', {
+      ws_id: workspaceA,
+      study_title: 'KI-01 re-import study',
+    });
+
+    const firstPayload = makePayload(
+      freshStudyId,
+      workspaceA,
+      ['ri-f1'],
+      [{ id: 'ri-h1', parent: 'ri-f1', target: 'ri-f1' }],
+    );
+    await (client as any).rpc('publish_prototype_from_plugin', {
+      p_payload: firstPayload,
+      p_idempotency_key: uuidv7(),
+    });
+
+    // Simulate the designer editing task_instruction in Builder. Bump version
+    // to mimic the autosave path that PrototypeEditor takes (D-13).
+    const customTask = 'Найдите кнопку «Добавить в корзину»';
+    const { data: blockBefore } = await admin
+      .from('blocks')
+      .select('id, content, version')
+      .eq('study_id', freshStudyId)
+      .eq('type', 'prototype')
+      .single();
+    const { error: editErr } = await admin
+      .from('blocks')
+      .update({
+        content: { ...(blockBefore!.content as object), task_instruction: customTask },
+        version: blockBefore!.version + 1,
+      })
+      .eq('id', blockBefore!.id);
+    expect(editErr).toBeNull();
+
+    // Second publish — different idempotency_key + different pv_id.
+    const secondPayload = makePayload(
+      freshStudyId,
+      workspaceA,
+      ['ri-f2'],
+      [{ id: 'ri-h2', parent: 'ri-f2', target: 'ri-f2' }],
+    );
+    const { data: pub2, error: pub2Err } = await (client as any).rpc(
+      'publish_prototype_from_plugin',
+      { p_payload: secondPayload, p_idempotency_key: uuidv7() },
+    );
+    expect(pub2Err).toBeNull();
+    expect(pub2?.replayed).toBe(false);
+    expect(pub2?.prototype_version_id).toBe(secondPayload.prototype_version_id);
+
+    // Still exactly 3 blocks (no duplicate prototype).
+    const { data: blocksAfter } = await admin
+      .from('blocks')
+      .select('id, position, type, content, version')
+      .eq('study_id', freshStudyId)
+      .order('position');
+    expect((blocksAfter ?? []).length).toBe(3);
+    const protoBlocks = (blocksAfter ?? []).filter((b) => b.type === 'prototype');
+    expect(protoBlocks.length).toBe(1);
+
+    // Same row (same id) — the RPC UPDATEd, didn't INSERT a new one.
+    expect(protoBlocks[0].id).toBe(blockBefore!.id);
+
+    // Content was merged: pv_id + starting_frame_id swapped to the new
+    // import; task_instruction preserved from the designer's edit.
+    const mergedContent = protoBlocks[0].content as Record<string, unknown>;
+    expect(mergedContent.prototype_version_id).toBe(secondPayload.prototype_version_id);
+    expect(mergedContent.starting_frame_id).toBe('ri-f2');
+    expect(mergedContent.task_instruction).toBe(customTask);
+
+    // version bumped by the RPC (D-13 optimistic concurrency).
+    expect(protoBlocks[0].version).toBeGreaterThan(blockBefore!.version + 1);
+  });
 });
