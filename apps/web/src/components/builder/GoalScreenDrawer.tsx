@@ -36,8 +36,8 @@
  * per handoff §"Interactions". Does NOT persist on the block.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Check, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Check, ChevronLeft, ChevronRight, Loader2, Trash2 } from 'lucide-react';
 import { Drawer, DrawerFooter, DrawerHeader } from '@/components/ui/drawer';
 import { useFrames, type Frame } from '@/lib/queries/prototypes';
 import { supabase } from '@/lib/supabase/auth';
@@ -82,6 +82,12 @@ export function GoalScreenDrawer({
   const [currentIndex, setCurrentIndex] = useState(initialFrameIndex);
   const [fitMode, setFitMode] = useState<FitMode>(() => readFitPref());
   const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
+  // Per-frame image-bytes loading flag. Reset to false on each navigation
+  // so the StageLoadingOverlay reappears while the new frame's PNG
+  // streams in; <img onLoad> flips it back to true (browser fires
+  // onLoad synchronously when the image is already in the HTTP cache,
+  // so prefetched neighbors transition to "ready" instantly — no flash).
+  const [imgReady, setImgReady] = useState(false);
 
   // Reset to initial frame each time the drawer opens.
   useEffect(() => {
@@ -97,10 +103,17 @@ export function GoalScreenDrawer({
   }, [fitMode]);
 
   // Batch a single createSignedUrls call per drawer open + frames-arrived.
+  // We sign BOTH 1x AND 2x render paths so the stage <picture> can serve
+  // a 2x source on Retina displays — the 1x PNG downscaled to a ~848-px
+  // stage on a 2-dppx screen would visibly soften text/UI inside the
+  // frame. Thumbnail strip (36×28) only needs 1x; lookup is still keyed
+  // by path so the extra signed 2x URLs cost nothing on the thumb side.
   useEffect(() => {
     if (!open || frames.length === 0) return;
     let cancelled = false;
-    const paths = frames.map((f) => f.render_path_1x).filter(Boolean) as string[];
+    const paths = frames
+      .flatMap((f) => [f.render_path_1x, f.render_path_2x])
+      .filter(Boolean) as string[];
     if (paths.length === 0) return;
     void (async () => {
       const { data, error } = await supabase.storage
@@ -117,6 +130,54 @@ export function GoalScreenDrawer({
       cancelled = true;
     };
   }, [open, frames]);
+
+  // Warm the ENTIRE prototype's image cache the moment signed URLs land.
+  //
+  // Earlier iteration only pre-fetched the previous + next neighbours, but
+  // a rapid chevron run (1→2→3→4 within a second or so) clicks faster
+  // than that effect can react — each navigation is the one that kicks
+  // off the prefetch for the index AFTER it, so the user still hits a
+  // not-yet-cached image on every other click. Pre-fetching all frames
+  // up-front trades a brief upload-saturation burst on drawer-open for
+  // genuinely instant navigation thereafter.
+  //
+  // We also call `img.decode()` (best-effort) — without it, the browser
+  // would later have to decode the PNG into a bitmap on the main thread
+  // when the visible <picture> references the cached bytes, adding a
+  // 30-100 ms hitch on switch. `decode()` performs that work now, in the
+  // background.
+  //
+  // Gated on a ref so React's StrictMode (and any future re-renders
+  // triggered by unrelated state changes) cannot re-fire the prefetch
+  // mid-drawer. The ref resets on close so the next open warms again
+  // (signed URLs may have expired or rotated).
+  const prefetchedRef = useRef(false);
+  useEffect(() => {
+    if (!open) {
+      prefetchedRef.current = false;
+      return;
+    }
+    if (prefetchedRef.current) return;
+    if (frames.length === 0 || Object.keys(signedUrls).length === 0) return;
+    if (typeof Image === 'undefined' || typeof window === 'undefined') return;
+    const wantHighDpi = window.devicePixelRatio >= 1.5;
+    for (const frame of frames) {
+      const url2x = frame.render_path_2x ? signedUrls[frame.render_path_2x] : undefined;
+      const url1x = frame.render_path_1x ? signedUrls[frame.render_path_1x] : undefined;
+      const url = wantHighDpi ? (url2x ?? url1x) : (url1x ?? url2x);
+      if (!url) continue;
+      const img = new Image();
+      img.src = url;
+      // Best-effort full decode so the bitmap is ready, not just the
+      // bytes. Older Safari builds without HTMLImageElement.decode()
+      // simply fall back to lazy on-paint decoding — no error case to
+      // surface to the user, swallow rejection.
+      img.decode?.().catch(() => {
+        /* fall back to on-paint decode */
+      });
+    }
+    prefetchedRef.current = true;
+  }, [open, frames, signedUrls]);
 
   // ← / → keyboard navigation.
   useEffect(() => {
@@ -139,6 +200,17 @@ export function GoalScreenDrawer({
   const currentSignedUrl = currentFrame?.render_path_1x
     ? signedUrls[currentFrame.render_path_1x]
     : undefined;
+  const currentSignedUrl2x = currentFrame?.render_path_2x
+    ? signedUrls[currentFrame.render_path_2x]
+    : undefined;
+
+  // Reset the per-frame image-loading flag whenever the displayed frame
+  // changes. The `<img onLoad>` below flips it back to true. For frames
+  // that the prefetch effect already pulled into the HTTP cache, onLoad
+  // fires almost-synchronously and the overlay never visibly appears.
+  useEffect(() => {
+    setImgReady(false);
+  }, [currentFrame?.frame_id]);
 
   const handleCommit = useCallback(() => {
     if (!currentFrame) return;
@@ -211,44 +283,67 @@ export function GoalScreenDrawer({
           ) : !currentFrame ? (
             <StagePlaceholder text="Импортируй прототип, чтобы выбрать экран цели." />
           ) : currentSignedUrl ? (
-            <img
-              src={currentSignedUrl}
-              alt={currentFrame.name ?? 'frame'}
-              style={
-                fitMode === 'width'
-                  ? {
-                      // Fit-to-width: image takes 100% of inner-stage width and
-                      // grows in height per its intrinsic aspect ratio. If the
-                      // resulting height exceeds the stage, the wrapping
-                      // overflowY:auto scrolls it vertically (matches the
-                      // handoff hint).
-                      width: '100%',
-                      height: 'auto',
-                      display: 'block',
-                      background: '#FFFFFF',
-                      borderRadius: 4,
-                      border: '1px solid var(--paper-3)',
-                      boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
-                    }
-                  : {
-                      // Fit-to-both: clamp by BOTH dimensions; browser
-                      // honours both max-* simultaneously and preserves
-                      // aspect ratio — image is letterboxed in whichever
-                      // axis has spare room. No object-fit needed because
-                      // we don't set width/height explicitly.
-                      maxWidth: '100%',
-                      maxHeight: '100%',
-                      display: 'block',
-                      background: '#FFFFFF',
-                      borderRadius: 4,
-                      border: '1px solid var(--paper-3)',
-                      boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
-                    }
-              }
-            />
+            <picture>
+              {/* Retina (≥1.5dppx): serve the 2x PNG so the stage image
+                  stays crisp when downscaled into a ~848-px stage on a
+                  2-dppx screen. 1x is the universal fallback. Matches the
+                  pattern FrameLayer uses on the runner side. */}
+              {currentSignedUrl2x && (
+                <source srcSet={currentSignedUrl2x} media="(min-resolution: 1.5dppx)" />
+              )}
+              <img
+                // key forces a fresh <img> element on frame change so the
+                // browser fires onLoad anew (without the key React reuses
+                // the same DOM node and may skip onLoad for in-place src
+                // swaps).
+                key={currentFrame.frame_id}
+                src={currentSignedUrl}
+                alt={currentFrame.name ?? 'frame'}
+                onLoad={() => setImgReady(true)}
+                // Even on error we hide the loader so the user isn't left
+                // staring at a spinner; the broken-image icon makes the
+                // failure self-evident.
+                onError={() => setImgReady(true)}
+                style={{
+                  ...(fitMode === 'width'
+                    ? {
+                        // Fit-to-width: image takes 100% of inner-stage width and
+                        // grows in height per its intrinsic aspect ratio. If the
+                        // resulting height exceeds the stage, the wrapping
+                        // overflowY:auto scrolls it vertically (matches the
+                        // handoff hint).
+                        width: '100%',
+                        height: 'auto',
+                      }
+                    : {
+                        // Fit-to-both: clamp by BOTH dimensions; browser
+                        // honours both max-* simultaneously and preserves
+                        // aspect ratio — image is letterboxed in whichever
+                        // axis has spare room. No object-fit needed because
+                        // we don't set width/height explicitly.
+                        maxWidth: '100%',
+                        maxHeight: '100%',
+                      }),
+                  display: 'block',
+                  background: '#FFFFFF',
+                  borderRadius: 4,
+                  border: '1px solid var(--paper-3)',
+                  boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
+                  // Fade-in once the bytes arrive — pairs with the loader
+                  // overlay that covers the gap.
+                  opacity: imgReady ? 1 : 0,
+                  transition: 'opacity 120ms cubic-bezier(.2,.7,.3,1)',
+                }}
+              />
+            </picture>
           ) : (
             <StagePlaceholder text="Подписываю URL рендера…" />
           )}
+
+          {/* Image-bytes loading overlay. Sits ON TOP of the (invisible)
+              <picture> so the image starts downloading immediately; the
+              overlay fades out by simply un-mounting once imgReady flips. */}
+          {currentSignedUrl && !imgReady ? <StageLoadingOverlay /> : null}
         </div>
 
         {/* Prev nav */}
@@ -306,6 +401,66 @@ function StagePlaceholder({ text }: { text: string }) {
     >
       {text}
     </p>
+  );
+}
+
+/**
+ * Loader overlay shown while the active frame's PNG bytes are still
+ * streaming in. Absolutely positioned over the inner scroll area so the
+ * <picture> below keeps loading the image — the overlay only hides the
+ * empty space, it doesn't block the network request. pointerEvents:none
+ * so chevron / thumb clicks aren't swallowed mid-load.
+ *
+ * For prefetched neighbors (see the dedicated useEffect above), the
+ * browser fires `<img onLoad>` almost-synchronously and this overlay
+ * never visibly appears. It only flashes for cache-miss cases (first
+ * frame on drawer open, random thumb-strip clicks on far frames).
+ */
+function StageLoadingOverlay() {
+  return (
+    <div
+      aria-live="polite"
+      aria-busy="true"
+      style={{
+        position: 'absolute',
+        inset: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 10,
+        pointerEvents: 'none',
+        background: 'color-mix(in oklab, var(--paper-2) 70%, transparent)',
+      }}
+    >
+      <Loader2
+        size={20}
+        strokeWidth={1.5}
+        aria-hidden="true"
+        style={{
+          color: 'var(--text-2)',
+          animation: 'gs-stage-spin 800ms linear infinite',
+        }}
+      />
+      <span
+        style={{
+          font: '400 13px/18px var(--font-sans)',
+          color: 'var(--text-2)',
+          letterSpacing: '0.01em',
+        }}
+      >
+        Прототип загружается…
+      </span>
+      <style>{`
+        @keyframes gs-stage-spin {
+          from { transform: rotate(0deg); }
+          to   { transform: rotate(360deg); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          @keyframes gs-stage-spin { from, to { transform: rotate(0deg); } }
+        }
+      `}</style>
+    </div>
   );
 }
 
