@@ -160,6 +160,14 @@ const SHARE_LINK_VALIDATION_ERROR =
 const SOFT_CAP_COPY =
   "Maxytest v1 supports prototypes up to 50 frames reliably. Larger files may time out — we'll show progress as we go.";
 
+// Plan 02.2-03 / D-06a — non-blocking plugin hint shown ABOVE the share-link
+// input. The plugin path (Phase 02.2) is the primary import flow for large
+// files; this hint lets a designer who landed on the REST dialog discover the
+// plugin without digging through docs. Hint is purely informational — does
+// NOT block, gate, or alter the existing REST flow.
+const PLUGIN_HINT_COPY =
+  'Для больших файлов (50+ фреймов) или быстрого импорта используйте плагин Maxytest для Figma. См. инструкции в apps/plugin/README.md.';
+
 export function FigmaImportDialog({
   open,
   onOpenChange,
@@ -288,6 +296,13 @@ export function FigmaImportDialog({
               if (!importDisabled) handleImport();
             }}
           >
+            <div
+              role="note"
+              className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900"
+            >
+              {PLUGIN_HINT_COPY}
+            </div>
+
             <div className="space-y-1.5">
               <label htmlFor="figma-share-link" className="text-sm font-medium">
                 Share link
