@@ -60,7 +60,18 @@ export function maskEmail(email: string): string {
 
 type NavigateLoose = (opts: { to: string; search?: unknown }) => unknown;
 
-export function LoginForm() {
+export interface LoginFormProps {
+  /**
+   * Optional same-origin path that the magic-link `emailRedirectTo` should
+   * round-trip back to after `/auth/callback` finishes the PKCE exchange.
+   * Default = unset → `useSignInWithOtp` falls back to `/app` (Phase 1
+   * behaviour). H4 fix wired in Phase 02.2 Plan 04 for the plugin-callback
+   * handshake.
+   */
+  next?: string;
+}
+
+export function LoginForm({ next }: LoginFormProps = {}) {
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: { email: '' },
@@ -71,7 +82,7 @@ export function LoginForm() {
 
   const onSubmit = form.handleSubmit(async ({ email }) => {
     try {
-      await signInWithOtp.mutateAsync({ email });
+      await signInWithOtp.mutateAsync({ email, next });
       navigate({
         to: '/auth/sent',
         search: { to: maskEmail(email) },

@@ -72,23 +72,41 @@ export function useSession(): UseSessionResult {
 
 export interface SignInWithOtpInput {
   email: string;
+  /**
+   * Optional caller-supplied post-callback target. Threaded into the
+   * `?next=` parameter of `emailRedirectTo` so the magic-link click lands
+   * back at the page that initiated the sign-in. When omitted, defaults to
+   * `/app` — IDENTICAL to the pre-Phase-02.2 behaviour, so existing call
+   * sites that don't pass a `next` see no change.
+   *
+   * Security: `/auth/callback` validates the inbound `next` via
+   * `isSameOriginPath` before navigating (Phase 1 Pitfall 10 /
+   * T-01-02-01). Same-origin paths like `/auth/plugin-callback?nonce=...`
+   * pass the gate; absolute / protocol-relative / `javascript:` strings
+   * are rejected and fall back to `/app`.
+   */
+  next?: string;
 }
 
 /**
  * Sends a magic-link email via Supabase Auth (signInWithOtp).
- * `emailRedirectTo` lands the user at /auth/callback with `next=/app` —
- * D-02 + Pitfall 10. The callback handler validates `next` before navigating.
+ * `emailRedirectTo` lands the user at `/auth/callback?next=<caller-supplied
+ * or '/app' default>` — D-02 + Pitfall 10. The callback handler validates
+ * `next` via `isSameOriginPath` before navigating (Phase 02.2 D-02 / H4 fix
+ * enables the plugin-callback round-trip).
  *
  * On success, stashes the email in sessionStorage under
  * `maxytest:last-otp-email` so `<MagicLinkSentScreen>` can replay it on Resend.
  */
 export function useSignInWithOtp() {
   return useMutation({
-    mutationFn: async ({ email }: SignInWithOtpInput) => {
+    mutationFn: async ({ email, next }: SignInWithOtpInput) => {
+      const nextParam = next ?? '/app';
+      const emailRedirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextParam)}`;
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback?next=/app`,
+          emailRedirectTo,
         },
       });
       if (error) throw error;
