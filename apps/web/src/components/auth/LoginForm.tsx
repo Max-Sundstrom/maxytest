@@ -1,45 +1,31 @@
+/**
+ * `<LoginForm>` — designer magic-link entry, design-system v1 rewrite (2026-05-17).
+ *
+ * Source: design-system handoff (paper bg, IBM Plex pair, moss accent, 32px
+ * input + 48px CTA). Old indigo + slate + English copy from Phase 1 is gone —
+ * RU copy throughout matches the rest of the redesigned app.
+ *
+ * Functional contract preserved from Phase 1:
+ *   - RHF + Zod validation
+ *   - useSignInWithOtp mutation, threads optional `next` into emailRedirectTo
+ *   - Success → /auth/sent?to=<masked email>
+ *   - Error → setError on email field (no separate error banner)
+ *   - maskEmail export remains so /auth/sent's search-param contract stays the
+ *     same (no test or route change required)
+ *
+ * Pitfall 2 (default test template asks for email): this form COLLECTS email
+ * because the designer is authenticating; unrelated to the respondent privacy
+ * posture covered by Pitfall 2.
+ */
+
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useNavigate } from '@tanstack/react-router';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form';
 import { useSignInWithOtp } from '@/lib/queries/auth';
 
-/**
- * `<LoginForm>` — designer magic-link entry.
- *
- * Copy locked in UI-SPEC.md §"Copy Lock" → "Auth flow":
- *   heading       — "Sign in to Maxytest"
- *   body          — "We'll email you a magic link. No password."
- *   email label   — "Email"
- *   placeholder   — "you@example.com"
- *   CTA           — "Send magic link"
- *   CTA loading   — "Sending…"
- *   empty error   — "Enter your email to continue."
- *   invalid error — "That doesn't look like an email address."
- *   server error  — "Couldn't send the link. Try again in a moment."
- *
- * On success: navigate to /auth/sent?to=<masked-email>.
- *
- * Pitfall 2 (default test template asks for email): this form COLLECTS email
- * because the designer is authenticating; this is unrelated to the respondent
- * privacy posture covered by Pitfall 2.
- */
-
 const loginSchema = z.object({
-  email: z
-    .string()
-    .min(1, 'Enter your email to continue.')
-    .email("That doesn't look like an email address."),
+  email: z.string().min(1, 'Введи email, чтобы продолжить.').email('Это не похоже на email.'),
 });
 
 type LoginFormValues = z.infer<typeof loginSchema>;
@@ -51,7 +37,7 @@ type LoginFormValues = z.infer<typeof loginSchema>;
  */
 export function maskEmail(email: string): string {
   const at = email.indexOf('@');
-  if (at <= 0) return email; // defensive — shouldn't happen post-Zod
+  if (at <= 0) return email;
   const local = email.slice(0, at);
   const domain = email.slice(at);
   if (local.length === 0) return email;
@@ -88,60 +74,162 @@ export function LoginForm({ next }: LoginFormProps = {}) {
         search: { to: maskEmail(email) },
       });
     } catch {
-      // Surface the locked server-error string. We deliberately avoid
-      // leaking Supabase error messages (could include rate-limit copy that
-      // duplicates what the user already sees in the resend countdown).
+      // Deliberately use the locked server-error string — don't leak the
+      // Supabase rate-limit copy that would duplicate the resend countdown.
       form.setError('email', {
         type: 'server',
-        message: "Couldn't send the link. Try again in a moment.",
+        message: 'Не получилось отправить ссылку. Попробуй через секунду.',
       });
     }
   });
 
   const isSubmitting = signInWithOtp.isPending || form.formState.isSubmitting;
+  const emailError = form.formState.errors.email?.message;
 
   return (
-    <div className="mx-auto w-full max-w-[400px] py-16">
-      <h1 className="mb-1 text-h2 font-semibold tracking-tight">Maxytest</h1>
-      <h2 className="mb-2 text-display font-semibold tracking-tight">Sign in to Maxytest</h2>
-      <p className="mb-8 text-body text-muted-foreground">
-        We&rsquo;ll email you a magic link. No password.
+    <>
+      <Eyebrow>Maxytest · Войти</Eyebrow>
+      <h1
+        style={{
+          font: '500 32px/38px var(--font-sans)',
+          color: 'var(--text-1)',
+          letterSpacing: '-0.01em',
+          margin: '8px 0 12px',
+        }}
+      >
+        Войти в Maxytest
+      </h1>
+      <p
+        style={{
+          font: '400 14px/20px var(--font-sans)',
+          color: 'var(--text-2)',
+          margin: '0 0 32px',
+        }}
+      >
+        Пришлём magic-link на email. Без пароля — клик в письме и ты внутри.
       </p>
 
-      <Form {...form}>
-        <form noValidate onSubmit={onSubmit} className="space-y-6">
-          <FormField
-            control={form.control}
-            name="email"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Email</FormLabel>
-                <FormControl>
-                  <Input
-                    type="email"
-                    autoComplete="email"
-                    inputMode="email"
-                    placeholder="you@example.com"
-                    {...field}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <Button
-            type="submit"
-            variant="default"
-            size="lg"
-            className="w-full"
-            disabled={isSubmitting}
-            aria-busy={isSubmitting}
+      <form
+        noValidate
+        onSubmit={onSubmit}
+        style={{ display: 'flex', flexDirection: 'column', gap: 16 }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <label
+            htmlFor="login-email"
+            style={{
+              font: '400 12.5px/16px var(--font-sans)',
+              color: 'var(--text-2)',
+              letterSpacing: '0.01em',
+            }}
           >
-            {isSubmitting ? 'Sending…' : 'Send magic link'}
-          </Button>
-        </form>
-      </Form>
-    </div>
+            Email
+          </label>
+          <input
+            id="login-email"
+            type="email"
+            autoComplete="email"
+            inputMode="email"
+            placeholder="you@example.com"
+            aria-invalid={!!emailError}
+            aria-describedby={emailError ? 'login-email-error' : undefined}
+            disabled={isSubmitting}
+            {...form.register('email')}
+            style={{
+              height: 40,
+              padding: '0 12px',
+              background: 'var(--bg-input)',
+              border: `1px solid ${emailError ? 'var(--color-danger)' : 'var(--border-1)'}`,
+              borderRadius: 'var(--radius)',
+              font: '400 14px/20px var(--font-sans)',
+              color: 'var(--text-1)',
+              outline: 'none',
+              transition:
+                'border-color 120ms cubic-bezier(.2,.7,.3,1), background 120ms cubic-bezier(.2,.7,.3,1)',
+              width: '100%',
+            }}
+            onFocus={(e) => {
+              if (!emailError) {
+                e.currentTarget.style.borderColor = 'var(--color-accent)';
+                e.currentTarget.style.background = 'var(--bg-input-strong)';
+              }
+            }}
+            onBlur={(e) => {
+              if (!emailError) {
+                e.currentTarget.style.borderColor = 'var(--border-1)';
+                e.currentTarget.style.background = 'var(--bg-input)';
+              }
+            }}
+          />
+          {emailError ? (
+            <p
+              id="login-email-error"
+              role="alert"
+              style={{
+                font: '400 12px/18px var(--font-sans)',
+                color: 'var(--color-danger)',
+                margin: 0,
+              }}
+            >
+              {emailError}
+            </p>
+          ) : null}
+        </div>
+
+        <button
+          type="submit"
+          disabled={isSubmitting}
+          aria-busy={isSubmitting || undefined}
+          style={{
+            height: 48,
+            background: 'var(--color-accent)',
+            color: '#fff',
+            border: 0,
+            borderRadius: 'var(--radius)',
+            font: '500 14px var(--font-sans)',
+            cursor: isSubmitting ? 'wait' : 'pointer',
+            opacity: isSubmitting ? 0.7 : 1,
+            transition: 'filter 120ms cubic-bezier(.2,.7,.3,1)',
+            marginTop: 8,
+          }}
+          onMouseEnter={(e) => {
+            if (!isSubmitting) e.currentTarget.style.filter = 'brightness(1.05)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.filter = 'none';
+          }}
+        >
+          {isSubmitting ? 'Отправляю…' : 'Получить ссылку'}
+        </button>
+      </form>
+
+      <p
+        style={{
+          font: '400 12px/18px var(--font-sans)',
+          color: 'var(--text-3)',
+          margin: '24px 0 0',
+          textAlign: 'center',
+        }}
+      >
+        Письмо приходит за 5-30 секунд. Если не пришло — посмотри в Спам.
+      </p>
+    </>
+  );
+}
+
+// ─── Eyebrow ─────────────────────────────────────────────────────────────
+
+function Eyebrow({ children }: { children: React.ReactNode }) {
+  return (
+    <span
+      style={{
+        font: '500 11px/16px var(--font-mono)',
+        letterSpacing: '0.08em',
+        textTransform: 'uppercase',
+        color: 'var(--color-accent)',
+      }}
+    >
+      {children}
+    </span>
   );
 }

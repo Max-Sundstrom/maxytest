@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/sonner';
 import { Button } from '@/components/ui/button';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { SkinPicker } from '@/components/shared/SkinPicker';
 
 /**
  * Single QueryClient instance for the app.
@@ -70,6 +71,7 @@ function RootComponent() {
         <AppErrorBoundary>
           <Outlet />
         </AppErrorBoundary>
+        <SkinPicker />
         <Toaster richColors position="bottom-right" theme="light" />
       </TooltipProvider>
     </QueryClientProvider>

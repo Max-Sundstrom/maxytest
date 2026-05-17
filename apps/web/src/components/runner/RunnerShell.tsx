@@ -29,7 +29,7 @@ import { useRunnerStore } from '@/lib/stores/runner';
 import { useSubmitResponse } from '@/lib/queries/responses';
 import { useCompleteSession } from '@/lib/queries/sessions';
 import { RunnerErrorBoundary } from './RunnerErrorBoundary';
-import { RunnerProgressBar } from './RunnerProgressBar';
+import { RunnerHeader } from './RunnerHeader';
 import { WelcomeRunner } from './blocks/WelcomeRunner';
 import { OpenQuestionRunner } from './blocks/OpenQuestionRunner';
 import { ThanksRunner } from './blocks/ThanksRunner';
@@ -62,8 +62,19 @@ export function RunnerShell({
   return (
     <RunnerErrorBoundary>
       <div
-        className="flex min-h-[100dvh] flex-col bg-background"
-        style={{ touchAction: 'manipulation' }}
+        style={{
+          // height (not minHeight) locks the runner to viewport so footer
+          // CTAs stay docked at the bottom and progress header at top.
+          // 100dvh — not 100vh — so mobile Safari's chrome doesn't crop the
+          // CTA (Pitfall 14e). touchAction:manipulation kills the iOS Safari
+          // 300ms double-tap-to-zoom delay.
+          height: '100dvh',
+          display: 'flex',
+          flexDirection: 'column',
+          background: 'var(--bg-page)',
+          touchAction: 'manipulation',
+          overflow: 'hidden',
+        }}
       >
         <RunnerShellInner
           mode={mode}
@@ -205,44 +216,78 @@ function RunnerShellInner({
   }
 
   if (!currentBlock) {
-    // Empty blocks (shouldn't happen in practice — every study has welcome +
-    // thanks at minimum). Render a friendly fallback rather than crashing.
     return (
-      <div className="flex flex-1 items-center justify-center px-4 py-8 text-center">
-        <p className="text-body text-muted-foreground">This test has no blocks yet.</p>
+      <div
+        style={{
+          flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '32px 16px',
+          textAlign: 'center',
+        }}
+      >
+        <p style={{ font: '400 14px/20px var(--font-sans)', color: 'var(--text-2)' }}>
+          В этом тесте пока нет блоков.
+        </p>
       </div>
     );
   }
 
+  // Question-only index/total (excludes welcome + thanks). These power the
+  // mono "Вопрос N из M" step-tag on each non-welcome block. We count any
+  // block that isn't pinned welcome/thanks.
+  const questionBlocks = blocks.filter((b) => b.type !== 'welcome' && b.type !== 'thanks');
+  const questionIndex = questionBlocks.findIndex((b) => b.id === currentBlock.id);
+  const questionTotal = questionBlocks.length;
+  const isFirstQuestion = questionIndex === 0;
+
+  function handleBack() {
+    if (currentBlockIndex <= 0) return;
+    setCurrentIndex(currentBlockIndex - 1);
+  }
+
   return (
     <>
-      <RunnerProgressBar current={currentBlockIndex} total={total} />
-      <div className="flex flex-1 flex-col">
-        <div className="mx-auto flex w-full max-w-[640px] flex-1 flex-col px-4 pb-4 pt-8 sm:px-6">
-          {currentBlock.type === 'welcome' && (
-            <WelcomeRunner block={currentBlock} onStart={handleWelcomeStart} />
-          )}
-          {currentBlock.type === 'open_question' && (
-            <OpenQuestionRunner
-              block={currentBlock}
-              isLast={isLastQuestion}
-              onSubmit={handleQuestionSubmit}
-              initialValue={
-                (answers[currentBlock.id]?.content as { text?: string } | undefined)?.text ?? ''
-              }
-            />
-          )}
-          {currentBlock.type === 'prototype' && (
-            <PrototypeRunner
-              block={currentBlock}
-              sessionId={sessionId ?? null}
-              onComplete={() => handleBlockAdvance(currentBlock.id)}
-            />
-          )}
-          {currentBlock.type === 'thanks' && (
-            <ThanksRunner block={currentBlock} onMounted={handleThanksRendered} />
-          )}
-        </div>
+      <RunnerHeader current={currentBlockIndex} total={total} />
+      <div
+        style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: 0,
+          width: '100%',
+          maxWidth: 480,
+          margin: '0 auto',
+        }}
+      >
+        {currentBlock.type === 'welcome' && (
+          <WelcomeRunner block={currentBlock} totalBlocks={total} onStart={handleWelcomeStart} />
+        )}
+        {currentBlock.type === 'open_question' && (
+          <OpenQuestionRunner
+            block={currentBlock}
+            questionIndex={Math.max(0, questionIndex)}
+            questionTotal={Math.max(1, questionTotal)}
+            isFirst={isFirstQuestion}
+            isLast={isLastQuestion}
+            onSubmit={handleQuestionSubmit}
+            onBack={handleBack}
+            initialValue={
+              (answers[currentBlock.id]?.content as { text?: string } | undefined)?.text ?? ''
+            }
+          />
+        )}
+        {currentBlock.type === 'prototype' && (
+          <PrototypeRunner
+            block={currentBlock}
+            sessionId={sessionId ?? null}
+            onComplete={() => handleBlockAdvance(currentBlock.id)}
+          />
+        )}
+        {currentBlock.type === 'thanks' && (
+          <ThanksRunner block={currentBlock} onMounted={handleThanksRendered} />
+        )}
       </div>
     </>
   );

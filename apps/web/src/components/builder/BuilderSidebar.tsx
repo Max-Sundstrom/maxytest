@@ -1,16 +1,17 @@
 /**
- * <BuilderSidebar> — Plan 01-03 Task 6 / UI-SPEC.md §"Layout Contracts → Sidebar".
+ * <BuilderSidebar /> — design-system v1 rewrite (2026-05-17).
  *
- * dnd-kit-powered sortable list with:
- *   - PointerSensor(delay: 150, tolerance: 5) — touch-friendly per Pitfall 5
- *   - KeyboardSensor — Space to grab, Arrow keys to move, Space to drop
- *   - restrictToVerticalAxis + restrictToParentElement modifiers
- *   - ARIA Announcements for screen-reader users
+ * Source: handoff `js/maxitest-builder.jsx` <Sidebar /> + index.html
+ * `.mx-side` rules. Sidebar background is now `var(--bg-page)` (shared with
+ * canvas) and only separated by a 1px right border (`--border-2`) — per
+ * handoff README §"Updates since v1".
  *
- * Pinned welcome (top) and thanks (bottom) are non-sortable per D-11; only the
- * unpinned blocks participate in the SortableContext. The reorder mutation
- * propagates to the server via `useReorderBlocks` (uses the `reorder_blocks`
- * RPC for atomic position updates).
+ * Geometry (12/8 padding, 2px gap between rows; each row exactly 32px tall
+ * with `12px 20px 1fr` grid + 0/8 padding) is enforced inside <BlockSidebarRow>.
+ *
+ * dnd-kit semantics unchanged from Phase 1: PointerSensor(delay:150,
+ * tolerance:5), KeyboardSensor (Space+Arrows), restrictTo* modifiers, ARIA
+ * announcements. Pinned welcome/thanks are non-sortable per D-11.
  */
 
 import {
@@ -30,7 +31,6 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { Plus } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { BLOCK_REGISTRY } from '@/lib/blocks/registry';
 import { useDeleteBlock, useDuplicateBlock, useReorderBlocks } from '@/lib/queries/blocks';
 import { useBuilderStore } from '@/lib/stores/builder';
@@ -39,7 +39,7 @@ import { BlockSidebarRow } from './BlockSidebarRow';
 
 export interface BuilderSidebarProps {
   studyId: string;
-  workspaceId: string;
+  workspaceId: string | null;
 }
 
 export function BuilderSidebar({ studyId, workspaceId }: BuilderSidebarProps) {
@@ -49,9 +49,9 @@ export function BuilderSidebar({ studyId, workspaceId }: BuilderSidebarProps) {
   const setSelectedBlockId = useUiStore((s) => s.setSelectedBlockId);
   const setCatalogPanelOpen = useUiStore((s) => s.setCatalogPanelOpen);
 
-  const reorderMutation = useReorderBlocks(studyId, workspaceId);
-  const deleteMutation = useDeleteBlock(studyId, workspaceId);
-  const duplicateMutation = useDuplicateBlock(studyId, workspaceId);
+  const reorderMutation = useReorderBlocks(studyId, workspaceId ?? '');
+  const deleteMutation = useDeleteBlock(studyId, workspaceId ?? '');
+  const duplicateMutation = useDuplicateBlock(studyId, workspaceId ?? '');
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -62,7 +62,6 @@ export function BuilderSidebar({ studyId, workspaceId }: BuilderSidebarProps) {
     }),
   );
 
-  // Compute unpinned subset + its dnd-kit `items` array.
   const unpinned = blocks.filter((b) => !b.pinned);
   const unpinnedIds = unpinned.map((b) => b.id);
 
@@ -74,19 +73,12 @@ export function BuilderSidebar({ studyId, workspaceId }: BuilderSidebarProps) {
     const toUnpinnedIndex = unpinnedIds.indexOf(String(over.id));
     if (fromUnpinnedIndex < 0 || toUnpinnedIndex < 0) return;
 
-    // Compute the new full ordering: pinned welcome stays at 0, unpinned
-    // blocks reorder in their subset, pinned thanks stays at last position.
     const newUnpinnedIds = arrayMove(unpinnedIds, fromUnpinnedIndex, toUnpinnedIndex);
-
-    // Local store reorder (synchronous; powers the UI immediately + zundo history).
-    // Translate the unpinned indices back to full-list indices.
     const oldFullIndex = blocks.findIndex((b) => b.id === active.id);
     const newFullIndex = blocks.findIndex((b) => b.id === newUnpinnedIds[toUnpinnedIndex]);
     if (oldFullIndex >= 0 && newFullIndex >= 0) {
       reorderBlocksLocal(oldFullIndex, newFullIndex);
     }
-
-    // Server reorder via RPC.
     reorderMutation.mutate({ orderedBlockIds: newUnpinnedIds });
   };
 
@@ -111,7 +103,20 @@ export function BuilderSidebar({ studyId, workspaceId }: BuilderSidebarProps) {
   };
 
   return (
-    <aside className="sticky top-14 flex h-[calc(100dvh-56px)] flex-col border-r border-border bg-surface px-4 py-6">
+    <aside
+      style={{
+        // The parent grid in BuilderShell already height-constrains the
+        // sidebar to "viewport minus topbar" via flex:1 + overflow:hidden,
+        // so we DON'T need position:sticky or a calc() height. We just
+        // fill the grid cell and own the internal scroll.
+        background: 'var(--bg-page)',
+        borderRight: '1px solid var(--border-2)',
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: 0,
+        overflow: 'hidden',
+      }}
+    >
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -139,8 +144,19 @@ export function BuilderSidebar({ studyId, workspaceId }: BuilderSidebarProps) {
           },
         }}
       >
-        <ul className="flex flex-1 flex-col gap-1 overflow-y-auto" aria-label="Test blocks">
-          {/* Pinned welcome (top, non-sortable) */}
+        <ul
+          aria-label="Test blocks"
+          style={{
+            padding: '12px 8px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 2,
+            overflow: 'auto',
+            flex: 1,
+            margin: 0,
+            listStyle: 'none',
+          }}
+        >
           {blocks
             .filter((b) => b.pinned && b.type === 'welcome')
             .map((b) => (
@@ -181,7 +197,6 @@ export function BuilderSidebar({ studyId, workspaceId }: BuilderSidebarProps) {
             })}
           </SortableContext>
 
-          {/* Pinned thanks (bottom, non-sortable) */}
           {blocks
             .filter((b) => b.pinned && b.type === 'thanks')
             .map((b) => (
@@ -202,14 +217,43 @@ export function BuilderSidebar({ studyId, workspaceId }: BuilderSidebarProps) {
         </ul>
       </DndContext>
 
-      <Button
-        variant="ghost"
-        className="mt-4 w-full justify-start text-accent hover:bg-slate-100"
+      {/* "+ Добавить блок" bottom button (32px, handoff .mx-add) */}
+      <button
+        type="button"
         onClick={() => setCatalogPanelOpen(true)}
+        style={{
+          marginTop: 6,
+          marginBottom: 12,
+          marginLeft: 16,
+          height: 32,
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '0 8px',
+          background: 'transparent',
+          border: 0,
+          cursor: 'pointer',
+          color: 'var(--text-2)',
+          alignSelf: 'flex-start',
+        }}
       >
-        <Plus className="mr-2 size-4" />
-        Add block
-      </Button>
+        <span
+          aria-hidden="true"
+          style={{
+            width: 20,
+            height: 20,
+            borderRadius: 'var(--radius-sm)',
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border-1)',
+            display: 'grid',
+            placeItems: 'center',
+            color: 'var(--text-1)',
+          }}
+        >
+          <Plus size={12} strokeWidth={1.5} />
+        </span>
+        <span style={{ font: '400 13px/16px var(--font-sans)' }}>Добавить блок</span>
+      </button>
     </aside>
   );
 }

@@ -1,80 +1,55 @@
-// apps/plugin/src/components/PrimaryCta.tsx — Phase 02.2 Plan 05 Task 3.
+// apps/plugin/src/components/PrimaryCta.tsx — design-system v1 rewrite (2026-05-17).
 //
-// UI-SPEC §"Component Inventory" #3 — pill-shaped primary action button,
-// 48 px tall, full-width inside its parent. Five states per UI-SPEC:
-// active / hover / focus-visible / disabled / pending.
-//
-// Focus-visible styling lives in styles.css.ts so the same accent ring
-// applies to every focusable element in the plugin. Hover uses inline
-// onMouseEnter/Leave to swap background — keeps the component self-
-// contained without a runtime CSS-in-JS dependency.
-//
-// `aria-busy={pending}` + `aria-disabled` per UI-SPEC §"PrimaryCta" bullet
-// 6. The button is functionally disabled while pending OR disabled is true,
-// but we keep `aria-disabled` reflecting the union so screen readers
-// announce the state consistently.
-
-import { useState } from 'react';
+// Source: handoff `.fp-cta` — 44px tall full-width pill (border-radius 999px),
+// moss accent bg, white text, brightness(1.05) on hover, disabled state at
+// 50% opacity. Loading state replaces the label with DotsLoader (visual cue
+// for the auth-handshake roundtrip — Plan 05 Pitfall 3 invariant unchanged).
 
 import DotsLoader from './DotsLoader';
 
 interface PrimaryCtaProps {
   label: string;
-  onClick: () => void;
-  disabled?: boolean;
+  onClick: () => void | Promise<void>;
   pending?: boolean;
-  /** Override width (default 100% — full-width fill). Used by ErrorCard
-   *  for the centered 240 px "Попробовать снова" button. */
-  width?: number | string;
+  disabled?: boolean;
 }
 
 export default function PrimaryCta({
   label,
   onClick,
-  disabled = false,
   pending = false,
-  width = '100%',
+  disabled = false,
 }: PrimaryCtaProps) {
-  const [hover, setHover] = useState(false);
-  const inactive = disabled || pending;
-
-  // Background palette — active / hover / disabled per UI-SPEC §"PrimaryCta"
-  let bg = 'var(--color-accent)';
-  if (inactive) bg = 'var(--color-accent-disabled)';
-  else if (hover) bg = 'var(--color-accent-hover)';
-
+  const isDisabled = pending || disabled;
   return (
     <button
       type="button"
-      onClick={inactive ? undefined : onClick}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      disabled={inactive}
+      onClick={() => {
+        void onClick();
+      }}
+      disabled={isDisabled}
       aria-busy={pending || undefined}
-      aria-disabled={inactive || undefined}
       style={{
-        height: 48,
-        width,
-        borderRadius: 9999,
-        padding: '0 24px',
-        border: 'none',
-        background: bg,
-        color: 'var(--color-text-invert)',
-        fontSize: 16,
-        fontWeight: 500,
-        // Always show pointer on active; disabled/pending → not-allowed.
-        cursor: inactive ? 'not-allowed' : 'pointer',
-        opacity: inactive ? 0.85 : 1,
-        // Smooth color transition per UI-SPEC §"Animation & Motion" row 5
-        // (120ms ease-out hover). prefers-reduced-motion override in
-        // styles.css.ts collapses this to 0.001ms (effectively instant).
-        transition: 'background 120ms ease-out',
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
+        display: 'block',
+        width: '100%',
+        height: 44,
+        background: 'var(--color-accent)',
+        color: '#FFFFFF',
+        border: 0,
+        borderRadius: 999,
+        font: '500 14px var(--font-sans, "IBM Plex Sans"), system-ui',
+        cursor: isDisabled ? 'not-allowed' : 'pointer',
+        opacity: isDisabled ? 0.5 : 1,
+        transition: 'filter 120ms cubic-bezier(.2,.7,.3,1)',
+      }}
+      onMouseEnter={(e) => {
+        if (!isDisabled) e.currentTarget.style.filter = 'brightness(1.05)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.filter = 'none';
       }}
     >
-      {pending ? <DotsLoader color="var(--color-text-invert)" /> : label}
+      {pending ? <DotsLoader /> : label}
     </button>
   );
 }

@@ -111,37 +111,55 @@ function PluginCallbackRoute() {
   }, [nonce]);
 
   return (
-    <main className="grid min-h-[100dvh] place-items-center bg-background px-4">
-      <div className="max-w-[400px] text-center">
+    <main
+      style={{
+        display: 'grid',
+        placeItems: 'center',
+        minHeight: '100dvh',
+        background: 'var(--bg-page)',
+        padding: 16,
+      }}
+    >
+      <div style={{ maxWidth: 400, textAlign: 'center' }}>
         {status === 'checking' && (
-          <p className="text-body text-muted-foreground" role="status" aria-live="polite">
-            Checking your session…
+          <p style={callbackTextStyle} role="status" aria-live="polite">
+            Проверяю сессию…
           </p>
         )}
         {status === 'need-login' && (
-          <p className="text-body text-muted-foreground" role="status" aria-live="polite">
-            Redirecting to sign in…
+          <p style={callbackTextStyle} role="status" aria-live="polite">
+            Переключаю на вход…
           </p>
         )}
         {status === 'broadcasting' && (
-          <p className="text-body text-muted-foreground" role="status" aria-live="polite">
-            Sending session to the plugin…
+          <p style={callbackTextStyle} role="status" aria-live="polite">
+            Передаю сессию в плагин…
           </p>
         )}
         {status === 'done' && (
-          <p className="text-body text-foreground" role="status" aria-live="polite">
-            Sign-in complete — close this tab and return to Figma.
+          <p
+            style={{ ...callbackTextStyle, color: 'var(--text-1)' }}
+            role="status"
+            aria-live="polite"
+          >
+            Готово — закрой вкладку и вернись в Figma.
           </p>
         )}
         {status === 'error' && (
-          <p className="text-body text-foreground" role="alert">
-            Couldn&rsquo;t send the session. Close this tab and try again from Figma.
+          <p style={{ ...callbackTextStyle, color: 'var(--color-danger)' }} role="alert">
+            Не получилось передать сессию. Закрой вкладку и попробуй из Figma снова.
           </p>
         )}
       </div>
     </main>
   );
 }
+
+const callbackTextStyle: React.CSSProperties = {
+  font: '400 14px/20px var(--font-sans)',
+  color: 'var(--text-2)',
+  margin: 0,
+};
 
 export const Route = createFileRoute('/auth/plugin-callback')({
   validateSearch: searchSchema,

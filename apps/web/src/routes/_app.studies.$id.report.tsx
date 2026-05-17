@@ -13,7 +13,7 @@
  */
 
 import { createFileRoute } from '@tanstack/react-router';
-import { PrototypeReport } from '@/components/studio/report/PrototypeReport';
+import { ReportShell } from '@/components/studio/report/ReportShell';
 import { supabase } from '@/lib/supabase/auth';
 
 export const Route = createFileRoute('/_app/studies/$id/report')({
@@ -57,5 +57,5 @@ export const Route = createFileRoute('/_app/studies/$id/report')({
 
 function ReportRoute() {
   const { id } = Route.useParams();
-  return <PrototypeReport studyId={id} />;
+  return <ReportShell studyId={id} />;
 }

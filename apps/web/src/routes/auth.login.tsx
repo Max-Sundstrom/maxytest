@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { z } from 'zod';
+import { AuthShell } from '@/components/auth/AuthShell';
 import { LoginForm } from '@/components/auth/LoginForm';
 
 /**
@@ -23,9 +24,9 @@ const searchSchema = z.object({
 function AuthLoginRoute() {
   const { next } = Route.useSearch();
   return (
-    <main className="min-h-[100dvh] bg-background px-4">
+    <AuthShell>
       <LoginForm next={next} />
-    </main>
+    </AuthShell>
   );
 }
 

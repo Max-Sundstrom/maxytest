@@ -20,11 +20,7 @@
 
 import AxeBuilder from '@axe-core/playwright';
 import { devices, expect, test } from '@playwright/test';
-import {
-  cleanupDesigner,
-  e2eCredentialsAvailable,
-  setupPublishedStudy,
-} from './_fixtures';
+import { cleanupDesigner, e2eCredentialsAvailable, setupPublishedStudy } from './_fixtures';
 
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21aa'];
 
@@ -33,7 +29,7 @@ test.use({ ...devices['Pixel 7'] });
 test.describe('a11y — runner screens (axe-core, mobile viewport)', () => {
   test('login page has zero WCAG AA violations', async ({ page }) => {
     await page.goto('/auth/login');
-    await expect(page.getByRole('heading', { name: /Sign in to Maxytest/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Войти в Maxytest/i })).toBeVisible();
     const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
     expect(results.violations).toEqual([]);
   });
@@ -60,7 +56,10 @@ test.describe('a11y — runner screens (axe-core, mobile viewport)', () => {
     const setup = await setupPublishedStudy();
     try {
       await page.goto(`/r/${setup.runToken}`);
-      await page.getByRole('button', { name: /start|begin/i }).first().click();
+      await page
+        .getByRole('button', { name: /start|begin/i })
+        .first()
+        .click();
       await expect(page.getByRole('textbox').first()).toBeVisible();
 
       const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
@@ -76,9 +75,15 @@ test.describe('a11y — runner screens (axe-core, mobile viewport)', () => {
     const setup = await setupPublishedStudy();
     try {
       await page.goto(`/r/${setup.runToken}`);
-      await page.getByRole('button', { name: /start|begin/i }).first().click();
+      await page
+        .getByRole('button', { name: /start|begin/i })
+        .first()
+        .click();
       await page.getByRole('textbox').first().fill('a11y answer');
-      await page.getByRole('button', { name: /finish|next|submit/i }).first().click();
+      await page
+        .getByRole('button', { name: /finish|next|submit/i })
+        .first()
+        .click();
       await expect(page.getByRole('heading', { name: /thanks/i }).first()).toBeVisible();
 
       const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();

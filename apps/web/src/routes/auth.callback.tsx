@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { z } from 'zod';
+import { AuthShell } from '@/components/auth/AuthShell';
 import { CallbackHandler } from '@/components/auth/CallbackHandler';
 
 /**
@@ -28,9 +29,9 @@ const searchSchema = z.object({
 function AuthCallbackRoute() {
   const { next } = Route.useSearch();
   return (
-    <main className="min-h-[100dvh] bg-background">
+    <AuthShell>
       <CallbackHandler next={next} />
-    </main>
+    </AuthShell>
   );
 }
 

@@ -89,6 +89,7 @@ import {
 import type { Block } from '@/lib/blocks/types';
 import { useFrames, usePrototypeVersion, type Frame } from '@/lib/queries/prototypes';
 import { FigmaImportDialog } from '@/components/studies/FigmaImportDialog';
+import { GoalScreensField } from '@/components/builder/GoalScreensField';
 import { supabase } from '@/lib/supabase/auth';
 
 export interface PrototypeEditorProps {
@@ -476,6 +477,19 @@ export function PrototypeEditor({ block, disabled, onSave, serverVersion }: Prot
             </Button>
           </div>
         </div>
+
+        {/* Goal screens (handoff ADDENDUM-v3 §2 — drawer-driven). Updates the
+            same finish_frame_ids array the per-frame Finish toggle writes to
+            in the thumbnail grid below; the drawer is the canonical
+            affordance, the inline toggle stays as a power-user shortcut. */}
+        <GoalScreensField
+          prototypeVersionId={pvId}
+          frames={frames}
+          goalIds={finishFrames}
+          onGoalsChange={(next) => form.setValue('finish_frame_ids', next, { shouldDirty: true })}
+          signedUrls={signedUrls}
+          disabled={disabled}
+        />
 
         {/* Thumbnail grid (D-08 §2-3) */}
         <div>

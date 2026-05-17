@@ -1,30 +1,21 @@
+/**
+ * `<MagicLinkSentScreen>` — design-system v1 rewrite (2026-05-17).
+ *
+ * Source: design-system handoff (paper bg, moss accent, IBM Plex, 48px CTA).
+ * Old indigo + English copy gone — RU throughout.
+ *
+ * Behavior contract preserved from Phase 1 (D-01):
+ *   - 60s countdown on the Resend button
+ *   - "Use a different email" link → /auth/login
+ *   - Resend triggers `useSignInWithOtp` against the email in sessionStorage
+ *     (set by <LoginForm>). If the key is missing (direct nav), Resend is
+ *     disabled and the link is the only escape hatch.
+ */
+
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
 import { readLastOtpEmail, useSignInWithOtp } from '@/lib/queries/auth';
-
-/**
- * `<MagicLinkSentScreen>` (D-01) — UI-SPEC.md §"Component Contracts".
- *
- * Props:
- *   - maskedEmail: string (e.g. "m***@hotmail.com")
- *
- * Behaviour:
- *   - 60s countdown on the Resend button (D-01)
- *   - "Use a different email" link → /auth/login
- *   - Resend triggers `useSignInWithOtp` against the email stored in
- *     sessionStorage by `<LoginForm>` (`maxytest:last-otp-email`). If the key
- *     is missing (e.g. user opened /auth/sent directly), Resend is disabled.
- *
- * Copy lock (UI-SPEC §"Copy Lock" Auth flow):
- *   heading            — "Check your email"
- *   body               — "We sent a link to {maskedEmail}. The link expires in 15 minutes."
- *   resend disabled    — "Resend in {N}s"
- *   resend enabled     — "Resend magic link"
- *   resend success     — "Sent. Check your inbox again." (toast)
- *   "different email"  — "Use a different email"
- */
 
 const RESEND_COOLDOWN_SECONDS = 60;
 
@@ -55,7 +46,6 @@ export function MagicLinkSentScreen({ maskedEmail }: MagicLinkSentScreenProps) {
     }, 1000);
   }, []);
 
-  // Kick off countdown on first mount.
   useEffect(() => {
     startCountdown();
     return () => {
@@ -66,56 +56,115 @@ export function MagicLinkSentScreen({ maskedEmail }: MagicLinkSentScreenProps) {
   const onResend = useCallback(async () => {
     const email = readLastOtpEmail();
     if (!email) {
-      toast.error('Use a different email to start over.');
+      toast.error('Войди под другим email — начнём заново.');
       navigate({ to: '/auth/login' });
       return;
     }
     try {
       await signInWithOtp.mutateAsync({ email });
-      toast.success('Sent. Check your inbox again.');
+      toast.success('Отправлено. Проверь почту ещё раз.');
       startCountdown();
     } catch {
-      toast.error("Couldn't send the link. Try again in a moment.");
+      toast.error('Не получилось отправить ссылку. Попробуй через секунду.');
     }
   }, [navigate, signInWithOtp, startCountdown]);
 
   const resendDisabled = secondsRemaining > 0 || signInWithOtp.isPending || !readLastOtpEmail();
   const resendLabel =
     secondsRemaining > 0
-      ? `Resend in ${secondsRemaining}s`
+      ? `Отправить снова через ${secondsRemaining}с`
       : signInWithOtp.isPending
-        ? 'Sending…'
-        : 'Resend magic link';
+        ? 'Отправляю…'
+        : 'Отправить снова';
 
   return (
-    <div className="mx-auto w-full max-w-[400px] py-16">
-      <h1 className="mb-1 text-h2 font-semibold tracking-tight">Maxytest</h1>
-      <h2 className="mb-2 text-display font-semibold tracking-tight">Check your email</h2>
-      <p className="mb-8 text-body text-muted-foreground">
-        We sent a link to <span className="font-mono">{maskedEmail}</span>. The link expires in 15
-        minutes.
+    <>
+      <span
+        style={{
+          font: '500 11px/16px var(--font-mono)',
+          letterSpacing: '0.08em',
+          textTransform: 'uppercase',
+          color: 'var(--color-accent)',
+        }}
+      >
+        Maxytest · Письмо отправлено
+      </span>
+      <h1
+        style={{
+          font: '500 32px/38px var(--font-sans)',
+          color: 'var(--text-1)',
+          letterSpacing: '-0.01em',
+          margin: '8px 0 12px',
+        }}
+      >
+        Проверь почту
+      </h1>
+      <p
+        style={{
+          font: '400 14px/20px var(--font-sans)',
+          color: 'var(--text-2)',
+          margin: '0 0 32px',
+        }}
+      >
+        Магическая ссылка ушла на{' '}
+        <span
+          style={{
+            font: '500 14px/20px var(--font-mono)',
+            color: 'var(--text-1)',
+          }}
+        >
+          {maskedEmail}
+        </span>
+        . Действует 15 минут.
       </p>
 
-      <div className="space-y-4">
-        <Button
-          variant="default"
-          size="lg"
-          className="w-full"
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <button
+          type="button"
           disabled={resendDisabled}
-          aria-busy={signInWithOtp.isPending}
+          aria-busy={signInWithOtp.isPending || undefined}
           onClick={onResend}
+          style={{
+            height: 48,
+            background: resendDisabled
+              ? 'var(--color-accent-disabled, var(--bg-chip))'
+              : 'var(--color-accent)',
+            color: resendDisabled ? 'var(--text-3)' : '#fff',
+            border: 0,
+            borderRadius: 'var(--radius)',
+            font: '500 14px var(--font-sans)',
+            cursor: resendDisabled ? 'not-allowed' : 'pointer',
+            opacity: resendDisabled ? 0.85 : 1,
+            transition: 'filter 120ms cubic-bezier(.2,.7,.3,1)',
+          }}
+          onMouseEnter={(e) => {
+            if (!resendDisabled) e.currentTarget.style.filter = 'brightness(1.05)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.filter = 'none';
+          }}
         >
           {resendLabel}
-        </Button>
+        </button>
 
         <button
           type="button"
-          className="block w-full text-center text-small text-muted-foreground underline-offset-4 hover:underline focus-visible:underline"
           onClick={() => navigate({ to: '/auth/login' })}
+          style={{
+            background: 'transparent',
+            border: 0,
+            padding: '8px 0',
+            font: '400 13px/20px var(--font-sans)',
+            color: 'var(--text-2)',
+            cursor: 'pointer',
+            textAlign: 'center',
+            textDecoration: 'underline',
+            textUnderlineOffset: 4,
+          }}
         >
-          Use a different email
+          Войти под другим email
         </button>
       </div>
-    </div>
+    </>
   );
 }

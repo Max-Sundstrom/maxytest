@@ -1,32 +1,27 @@
 /**
- * <BlockCard> — Plan 01-03 Task 7 / UI-SPEC.md §"<BlockCard>".
+ * <BlockCard /> — design-system v1 rewrite (2026-05-17).
  *
- * Header: block number + type icon + type label + <SaveStateIndicator>.
- * Body: per-type editor inside a wrapper that switches to
- *   <ConflictResolutionBanner> when saveState === 'conflict'.
+ * Source: handoff `js/maxitest-builder.jsx` <Card /> + index.html `.mx-card*`
+ * rules.
  *
- * Save-state state machine derived from the per-card useUpdateBlock mutation:
- *   - mount       → 'idle'
- *   - user edit   → 'dirty' (driven by RHF isDirty inside the editor)
- *   - debounced .mutate fired → 'saving' (mutation.isPending)
- *   - mutation success        → 'saved' + lastSavedAt = now
- *   - mutation error          →
- *       - ConflictError → 'conflict' (banner)
- *       - other         → 'error'
+ *   Card: bg-card, 1px border-1, var(--radius), shadow-card, padding 24/28/28.
+ *   Header (18px bottom margin):
+ *     [num "01."] [28×28 chip with block-type icon] [editable title 500 16/24]
+ *     [Добавить логику button — push right, hidden on welcome/thanks]
+ *   Body: 16px gap; editor components own their own fields.
  *
- * Conflict resolution:
- *   - Use server  → invalidateQueries(['blocks', studyId]) → refetch → reset
- *                   the local editor's defaultValues via the editor's effect.
- *   - Use mine    → useForceUpdateBlock → bumps version + broadcasts → 'saved'.
+ * Save-state state machine, conflict resolution, and editor selection logic
+ * are preserved from Phase 1 — only the visual chrome changed.
  */
 
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { GitBranch } from 'lucide-react';
+import { toast } from 'sonner';
 import { useUiStore } from '@/lib/stores/ui';
 import { useForceUpdateBlock, useUpdateBlock, ConflictError } from '@/lib/queries/blocks';
-import { Card } from '@/components/ui/card';
-import { cn } from '@/lib/utils';
 import { BLOCK_REGISTRY } from '@/lib/blocks/registry';
+import { blockVisualOf } from '@/lib/blocks/visual';
 import type { Block } from '@/lib/blocks/types';
 import type { BlockContent } from '@/lib/blocks/schemas';
 import { ConflictResolutionBanner } from './ConflictResolutionBanner';
@@ -45,7 +40,8 @@ export interface BlockCardProps {
 
 export function BlockCard({ block, index, studyId, workspaceId }: BlockCardProps) {
   const entry = BLOCK_REGISTRY[block.type];
-  const Icon = entry.icon;
+  const visual = blockVisualOf(block.type);
+  const ChipIcon = visual.icon;
 
   const updateMutation = useUpdateBlock(studyId, workspaceId);
   const forceMutation = useForceUpdateBlock(studyId, workspaceId);
@@ -62,8 +58,6 @@ export function BlockCard({ block, index, studyId, workspaceId }: BlockCardProps
 
   const isConflict = saveState === 'conflict';
 
-  // Watch the mutation lifecycle so the indicator stays in sync. The mutation
-  // is per-component (each BlockCard owns one `useUpdateBlock`).
   useEffect(() => {
     if (updateMutation.isPending) {
       setSaveState('saving');
@@ -111,8 +105,6 @@ export function BlockCard({ block, index, studyId, workspaceId }: BlockCardProps
   };
 
   const handleUseServer = () => {
-    // Reset the mutation state then refetch so the editor reloads from the
-    // freshly-fetched server content.
     updateMutation.reset();
     qc.invalidateQueries({ queryKey: ['blocks', studyId] });
     setSaveState('idle');
@@ -169,34 +161,120 @@ export function BlockCard({ block, index, studyId, workspaceId }: BlockCardProps
       />
     );
 
+  const blockTitle =
+    (block.content as { title?: string; question?: string }).title?.toString().trim() ||
+    (block.content as { title?: string; question?: string }).question?.toString().trim() ||
+    entry.label;
+
+  const showLogic = !block.pinned;
+
   return (
-    <Card
+    <section
       id={`block-card-${block.id}`}
-      className={cn(
-        'rounded-lg border border-border bg-card shadow-sm transition-shadow duration-200',
-        isActive && 'ring-1 ring-accent ring-offset-2',
-      )}
+      aria-label={`${blockTitle} block`}
+      style={{
+        background: 'var(--bg-card)',
+        border: `1px solid ${isActive ? 'var(--color-accent)' : 'var(--border-1)'}`,
+        borderRadius: 'var(--radius)',
+        boxShadow: isActive
+          ? '0 0 0 2px color-mix(in oklab, var(--color-accent) 18%, transparent), var(--shadow-card)'
+          : 'var(--shadow-card)',
+        padding: '24px 28px 28px',
+        transition:
+          'border-color 120ms cubic-bezier(.2,.7,.3,1), box-shadow 120ms cubic-bezier(.2,.7,.3,1)',
+      }}
     >
-      <div className="flex h-14 items-center justify-between border-b border-border px-6">
-        <div className="flex items-center gap-3">
-          <span className="text-caption font-mono text-muted-foreground">
-            {String(index + 1).padStart(2, '0')}
-          </span>
-          <Icon aria-hidden="true" className="size-4 text-muted-foreground" />
-          <span className="text-h3 font-semibold text-foreground">{entry.label}</span>
-        </div>
+      {/* Header */}
+      <header
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          marginBottom: 18,
+        }}
+      >
+        <span
+          aria-hidden="true"
+          style={{
+            font: '500 16px var(--font-sans)',
+            color: 'var(--text-2)',
+            minWidth: 22,
+          }}
+        >
+          {String(index + 1).padStart(2, '0')}.
+        </span>
+        <span
+          aria-hidden="true"
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 'var(--radius)',
+            background: visual.chipBg,
+            color: visual.chipFg,
+            display: 'grid',
+            placeItems: 'center',
+            flexShrink: 0,
+          }}
+        >
+          <ChipIcon size={14} strokeWidth={1.5} />
+        </span>
+        <span
+          style={{
+            flex: 1,
+            font: '500 16px/24px var(--font-sans)',
+            color: 'var(--text-1)',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {blockTitle}
+        </span>
         <SaveStateIndicator state={saveState} lastSavedAt={lastSavedAt} onRetry={handleRetry} />
-      </div>
-      <div className="p-6">
+        {showLogic ? (
+          <button
+            type="button"
+            onClick={() => toast.info('Логика блоков появится в Phase 4.')}
+            style={{
+              height: 32,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '0 12px',
+              background: 'transparent',
+              border: 0,
+              borderRadius: 'var(--radius)',
+              color: 'var(--text-2)',
+              fontSize: 13,
+              cursor: 'pointer',
+              transition: 'background 120ms cubic-bezier(.2,.7,.3,1)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--bg-chip)';
+              e.currentTarget.style.color = 'var(--text-1)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = 'var(--text-2)';
+            }}
+          >
+            <GitBranch size={14} strokeWidth={1.5} />
+            <span>Добавить логику</span>
+          </button>
+        ) : null}
+      </header>
+
+      {/* Body */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         {isConflict ? (
-          <div className="flex flex-col gap-4">
+          <>
             <ConflictResolutionBanner onUseServer={handleUseServer} onUseMine={handleUseMine} />
-            <div className="pointer-events-none opacity-60">{editor}</div>
-          </div>
+            <div style={{ pointerEvents: 'none', opacity: 0.6 }}>{editor}</div>
+          </>
         ) : (
           editor
         )}
       </div>
-    </Card>
+    </section>
   );
 }

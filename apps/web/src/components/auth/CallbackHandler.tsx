@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { Loader2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabase/auth';
 import { DEFAULT_NEXT, isSameOriginPath } from '@/lib/auth/next-validate';
 
 /**
- * `<CallbackHandler>` — runs after Supabase's `detectSessionInUrl: true` has
- * already exchanged the PKCE `code` query for a session (Pattern 1).
+ * `<CallbackHandler>` — design-system v1 rewrite (2026-05-17).
+ *
+ * Runs after Supabase's `detectSessionInUrl: true` has already exchanged the
+ * PKCE `code` query for a session (Pattern 1).
  *
  * Flow (D-02):
  *   1. Call `supabase.auth.getSession()` to confirm the session now exists.
@@ -15,7 +16,9 @@ import { DEFAULT_NEXT, isSameOriginPath } from '@/lib/auth/next-validate';
  *   3. Navigate to the validated path with `replace: true` so the magic-link
  *      query string disappears from history.
  *
- * Loading / error copy locked in UI-SPEC.md §"Copy Lock" Auth flow.
+ * Visual: a centered spinner + RU status copy, with the error branch landing
+ * on the same handoff styling as the rest of the auth flow. Designed to live
+ * inside <AuthShell>.
  */
 
 type NavigateLoose = (opts: { to: string; replace?: boolean }) => unknown;
@@ -36,13 +39,10 @@ export function CallbackHandler({ next }: CallbackHandlerProps) {
         const { data, error: sessionError } = await supabase.auth.getSession();
         if (cancelled) return;
         if (sessionError) {
-          // Supabase reports invalid / expired links here.
           setError('expired');
           return;
         }
         if (!data.session) {
-          // detectSessionInUrl: true should have populated this. A missing
-          // session means the link is stale (clicked twice / past expiry).
           setError('expired');
           return;
         }
@@ -62,26 +62,95 @@ export function CallbackHandler({ next }: CallbackHandlerProps) {
   }, [navigate, next]);
 
   if (error) {
-    const heading =
+    const heading = error === 'expired' ? 'Ссылка устарела' : 'Ссылка не сработала';
+    const body =
       error === 'expired'
-        ? 'This link expired. Request a new one.'
-        : "This link isn't valid. Try signing in again.";
+        ? 'Magic-link действует 15 минут. Запроси новую — это бесплатно и быстро.'
+        : 'Скорее всего ссылка повреждена или ты её уже использовал. Запроси новую.';
     return (
-      <div className="mx-auto flex min-h-[100dvh] max-w-[400px] flex-col items-center justify-center px-4 text-center">
-        <h1 className="mb-6 text-h1 font-semibold tracking-tight">{heading}</h1>
-        <Button variant="default" size="lg" onClick={() => navigate({ to: '/auth/login' })}>
-          Back to sign in
-        </Button>
-      </div>
+      <>
+        <span
+          style={{
+            font: '500 11px/16px var(--font-mono)',
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            color: 'var(--color-danger)',
+          }}
+        >
+          Maxytest · Ошибка
+        </span>
+        <h1
+          style={{
+            font: '500 32px/38px var(--font-sans)',
+            color: 'var(--text-1)',
+            letterSpacing: '-0.01em',
+            margin: '8px 0 12px',
+          }}
+        >
+          {heading}
+        </h1>
+        <p
+          style={{
+            font: '400 14px/20px var(--font-sans)',
+            color: 'var(--text-2)',
+            margin: '0 0 24px',
+          }}
+        >
+          {body}
+        </p>
+        <button
+          type="button"
+          onClick={() => navigate({ to: '/auth/login' })}
+          style={{
+            height: 48,
+            background: 'var(--color-accent)',
+            color: '#fff',
+            border: 0,
+            borderRadius: 'var(--radius)',
+            font: '500 14px var(--font-sans)',
+            cursor: 'pointer',
+            transition: 'filter 120ms cubic-bezier(.2,.7,.3,1)',
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.filter = 'brightness(1.05)')}
+          onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
+        >
+          Запросить новую ссылку
+        </button>
+      </>
     );
   }
 
   return (
-    <div className="mx-auto flex min-h-[100dvh] max-w-[400px] flex-col items-center justify-center px-4 text-center">
-      <Loader2 className="mb-4 size-8 animate-spin text-muted-foreground" aria-hidden />
-      <p className="text-body text-muted-foreground" role="status" aria-live="polite">
-        Signing you in…
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 16,
+        padding: '24px 0',
+      }}
+    >
+      <Loader2
+        aria-hidden="true"
+        style={{
+          width: 32,
+          height: 32,
+          color: 'var(--color-accent)',
+          animation: 'spin 1s linear infinite',
+        }}
+      />
+      <p
+        role="status"
+        aria-live="polite"
+        style={{
+          font: '400 14px/20px var(--font-sans)',
+          color: 'var(--text-2)',
+          margin: 0,
+        }}
+      >
+        Подключаю тебя…
       </p>
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }

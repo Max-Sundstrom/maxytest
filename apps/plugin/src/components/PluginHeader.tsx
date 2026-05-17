@@ -1,15 +1,17 @@
-// apps/plugin/src/components/PluginHeader.tsx — Phase 02.2 Plan 05 Task 3.
+// apps/plugin/src/components/PluginHeader.tsx — design-system v1 rewrite (2026-05-17).
 //
-// UI-SPEC §"Component Inventory" #1 — fixed 52 px black header with logo,
-// brand text, and close-X. Shared across every plugin screen (S1..S5 in
-// Plan 07; for now only S1 + authenticated placeholder).
+// Source: design-system handoff (`maxitest-plugin.jsx` <PluginFrame /> header +
+// `.fp-hd*` rules). 48px tall, plum `--color-accent-5` (#9E5E72) background,
+// 24×24 white square logo with dark M (inverse of the main-app M-logo, no
+// accent dot — plugin-specific signal), "Maxytest" wordmark, 28×28 round X.
 //
-// Close button posts `{type:'close'}` via the parent IPC bridge. Sandbox
-// (code.ts) calls figma.closePlugin() on receipt — see Plan 05 Task 1.
+// Close button posts `{type:'close'}` via the parent IPC bridge; sandbox
+// (code.ts) calls figma.closePlugin() on receipt — Plan 05 Task 1 contract
+// preserved.
 //
-// A11y per UI-SPEC §"PluginHeader" bullet 5:
-//   - `<header role="banner" aria-label="Maxytest plugin">`
-//   - Close-X button has `aria-label="Close plugin"`
+// A11y:
+//   - <header role="banner" aria-label="Maxytest plugin">
+//   - Close-X has aria-label="Закрыть плагин"
 
 interface PluginHeaderProps {
   onClose: () => void;
@@ -21,73 +23,71 @@ export default function PluginHeader({ onClose }: PluginHeaderProps) {
       role="banner"
       aria-label="Maxytest plugin"
       style={{
-        // Fixed 52 px to match UI-SPEC; flex row, brand on left, X on right.
-        height: 52,
+        height: 48,
         flexShrink: 0,
-        background: '#0E0E0E',
-        color: 'var(--color-text-invert)',
+        background: 'var(--color-accent-5)',
+        color: '#FFFFFF',
         display: 'flex',
-        justifyContent: 'space-between',
         alignItems: 'center',
-        padding: '0 16px',
+        gap: 10,
+        padding: '0 12px',
       }}
     >
-      {/* Brand block — white square logo + "Maxytest" wordmark */}
-      <div style={{ display: 'flex', alignItems: 'center' }}>
-        <div
-          aria-hidden="true"
-          style={{
-            width: 24,
-            height: 24,
-            background: '#FFFFFF',
-            color: '#0E0E0E',
-            borderRadius: 6,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: 14,
-            fontWeight: 700,
-            lineHeight: 1,
-          }}
-        >
-          М
-        </div>
-        <span
-          style={{
-            marginLeft: 8,
-            fontSize: 16,
-            fontWeight: 600,
-            color: 'var(--color-text-invert)',
-          }}
-        >
-          Maxytest
-        </span>
+      {/* 24×24 white square, dark "M" inside — handoff .fp-hd-logo */}
+      <div
+        aria-hidden="true"
+        style={{
+          width: 24,
+          height: 24,
+          background: '#FFFFFF',
+          color: '#1F1F1F',
+          borderRadius: 6,
+          display: 'grid',
+          placeItems: 'center',
+          font: '600 13px var(--font-sans, "IBM Plex Sans"), system-ui',
+          letterSpacing: '-0.02em',
+          flexShrink: 0,
+        }}
+      >
+        M
       </div>
-
-      {/* Close button — 32×32 hit target, transparent bg, hover handled
-          via inline state would require a state hook; we keep the styling
-          minimal (Figma users mostly click rather than hover). */}
+      <span
+        style={{
+          flex: 1,
+          font: '500 14px var(--font-sans, "IBM Plex Sans"), system-ui',
+        }}
+      >
+        Maxytest
+      </span>
       <button
         type="button"
         onClick={onClose}
-        aria-label="Close plugin"
+        aria-label="Закрыть плагин"
         style={{
-          width: 32,
-          height: 32,
+          width: 28,
+          height: 28,
           background: 'transparent',
-          color: 'var(--color-text-invert)',
-          border: 'none',
-          borderRadius: 6,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
+          color: 'rgba(255,255,255,0.8)',
+          border: 0,
+          borderRadius: '50%',
+          display: 'grid',
+          placeItems: 'center',
           cursor: 'pointer',
+          transition:
+            'background 120ms cubic-bezier(.2,.7,.3,1), color 120ms cubic-bezier(.2,.7,.3,1)',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = 'rgba(255,255,255,0.1)';
+          e.currentTarget.style.color = '#FFFFFF';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = 'transparent';
+          e.currentTarget.style.color = 'rgba(255,255,255,0.8)';
         }}
       >
-        {/* Inline SVG ×, 20×20 — UI-SPEC §"Iconography" row 1 */}
         <svg
-          width="20"
-          height="20"
+          width="14"
+          height="14"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"

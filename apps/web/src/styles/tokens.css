@@ -1,134 +1,306 @@
 /*
- * Maxytest design tokens — Phase 1 Walking Skeleton
- * Source of truth: .planning/phases/01-walking-skeleton/01-UI-SPEC.md §"Brand & Tokens"
+ * Maxytest design tokens — v1 (handoff-aligned)
  *
- * Tailwind v4 @theme block: tokens declared here become Tailwind utilities
- * (e.g., `--color-accent` → `bg-accent`, `text-accent`, `border-accent`,
- *  `--spacing-touch` → `min-h-touch`, `min-w-touch`).
+ * Source of truth: .planning/design-system/handoff-v1/README.md + foundations.jsx
+ * Adopted 2026-05-17 — replaces Phase 1 Inter + indigo #4F46E5 + scale-radii system.
  *
- * Dark-mode swap point: a future `:root.dark { ... }` override of the same
- * variables flips the entire system. No toggle in Phase 1 (UI-SPEC.md).
+ * Architecture
+ * ────────────
+ *   1. Raw skin scales (--paper-*, --ink-*) re-bind via :root[data-skin="..."].
+ *   2. Semantic surfaces (--bg-page, --text-1, --border-1, …) reference the
+ *      raw scales — they swap automatically with the skin.
+ *   3. Constants (--accent, --success, --font-*, --radius-*, --sh-*, --duration-*)
+ *      live in @theme so Tailwind exposes them as utilities AND so they don't
+ *      change between skins.
+ *
+ * Three skins ship: paper (default, warm researcher mood) / white (clean
+ * neutral) / dark. Switch by setting `data-skin="white"` or `data-skin="dark"`
+ * on <html>. Default (no attribute) = paper.
+ *
+ * Tailwind v4 @theme block
+ * ────────────────────────
+ * Tokens declared in @theme become Tailwind utilities (`--color-accent` →
+ * `bg-accent`, `text-accent`, `border-accent`; `--radius-lg` → `rounded-lg`;
+ * `--spacing-control` → `h-control`, `min-h-control`).
+ *
+ * Re-binding semantic colors per skin
+ * ───────────────────────────────────
+ * The `@theme` block defines the *default* (= paper) values. The :root[data-skin]
+ * overrides below replace the same CSS variables at higher specificity, so a
+ * Tailwind utility like `bg-page` resolves to the active-skin value at runtime.
  */
 
+/* ═══ Skin: paper (default — warm, researcher mood) ════════════════════════ */
+:root,
+:root[data-skin='paper'] {
+  /* Raw paper scale (page backgrounds, surfaces) */
+  --paper-0: #fbf8f3;
+  --paper-1: #f4efe7;
+  --paper-2: #ebe4d7;
+  --paper-3: #e0d7c7;
+
+  /* Raw ink scale (text, lines) */
+  --ink-0: #1c1a15;
+  --ink-1: #3d3833;
+  --ink-2: #6b645b;
+  --ink-3: #9a9388;
+  --ink-4: #c7bba8;
+
+  /* Semantic surfaces */
+  --bg-page: var(--paper-0);
+  --bg-sidebar: var(--paper-1);
+  --bg-card: #ffffff;
+  --bg-input: var(--paper-1);
+  --bg-input-strong: var(--paper-2);
+  --bg-chip: var(--paper-2);
+
+  /* Semantic text */
+  --text-1: var(--ink-0);
+  --text-2: var(--ink-2);
+  --text-3: var(--ink-3);
+  --text-on-accent: #ffffff;
+
+  /* Semantic borders */
+  --border-1: var(--paper-3);
+  --border-2: var(--paper-2);
+  --border-strong: var(--ink-4);
+
+  /* Warm-tinted shadows */
+  --sh-xs: 0 1px 0 rgba(45, 30, 15, 0.04);
+  --sh-sm: 0 1px 2px rgba(45, 30, 15, 0.06), 0 1px 4px rgba(45, 30, 15, 0.04);
+  --sh-md: 0 4px 12px rgba(45, 30, 15, 0.08), 0 2px 4px rgba(45, 30, 15, 0.04);
+  --sh-lg: 0 12px 40px rgba(45, 30, 15, 0.12), 0 4px 12px rgba(45, 30, 15, 0.06);
+  --shadow-card: 0 1px 0 rgba(45, 30, 15, 0.04), 0 1px 3px rgba(45, 30, 15, 0.05);
+}
+
+/* ═══ Skin: white (clean neutral — closer to v0 live product) ══════════════ */
+:root[data-skin='white'] {
+  --paper-0: #ffffff;
+  --paper-1: #fafafa;
+  --paper-2: #f4f4f5;
+  --paper-3: #e5e7eb;
+
+  --ink-0: #111111;
+  --ink-1: #1f2328;
+  --ink-2: #6b7280;
+  --ink-3: #9ca3af;
+  --ink-4: #d1d5db;
+
+  --bg-page: var(--paper-0);
+  --bg-sidebar: var(--paper-1);
+  --bg-card: #ffffff;
+  --bg-input: var(--paper-1);
+  --bg-input-strong: var(--paper-2);
+  --bg-chip: var(--paper-2);
+
+  --text-1: var(--ink-0);
+  --text-2: var(--ink-2);
+  --text-3: var(--ink-3);
+  --text-on-accent: #ffffff;
+
+  --border-1: var(--paper-3);
+  --border-2: var(--paper-2);
+  --border-strong: var(--ink-4);
+
+  /* Neutral-gray shadows */
+  --sh-xs: 0 1px 0 rgba(15, 23, 42, 0.04);
+  --sh-sm: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 4px rgba(15, 23, 42, 0.04);
+  --sh-md: 0 4px 12px rgba(15, 23, 42, 0.08), 0 2px 4px rgba(15, 23, 42, 0.04);
+  --sh-lg: 0 12px 40px rgba(15, 23, 42, 0.12), 0 4px 12px rgba(15, 23, 42, 0.06);
+  --shadow-card: 0 1px 0 rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+
+/* ═══ Skin: dark ══════════════════════════════════════════════════════════ */
+:root[data-skin='dark'] {
+  --paper-0: #14130f;
+  --paper-1: #1b1a15;
+  --paper-2: #25231d;
+  --paper-3: #34312a;
+
+  --ink-0: #f4efe7;
+  --ink-1: #d8d0c2;
+  --ink-2: #9a9388;
+  --ink-3: #6b645b;
+  --ink-4: #3d3833;
+
+  --bg-page: var(--paper-0);
+  --bg-sidebar: var(--paper-1);
+  --bg-card: var(--paper-1);
+  --bg-input: var(--paper-2);
+  --bg-input-strong: var(--paper-3);
+  --bg-chip: var(--paper-2);
+
+  --text-1: var(--ink-0);
+  --text-2: var(--ink-1);
+  --text-3: var(--ink-2);
+  --text-on-accent: #ffffff;
+
+  --border-1: var(--paper-3);
+  --border-2: var(--paper-2);
+  --border-strong: var(--ink-4);
+
+  /* Full-black shadows at higher opacity */
+  --sh-xs: 0 1px 0 rgba(0, 0, 0, 0.4);
+  --sh-sm: 0 1px 2px rgba(0, 0, 0, 0.5), 0 1px 4px rgba(0, 0, 0, 0.3);
+  --sh-md: 0 4px 12px rgba(0, 0, 0, 0.5), 0 2px 4px rgba(0, 0, 0, 0.3);
+  --sh-lg: 0 12px 40px rgba(0, 0, 0, 0.6), 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-card: 0 1px 0 rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+/* ═══ Constants — accents, functional, type, radii, motion ════════════════ */
 @theme {
-  /* -- Color: dominant / surface / accent (60/30/10 split) ---------------- */
+  /*
+   * Semantic surface utilities (Tailwind names → CSS vars that swap per skin).
+   * Examples: `bg-page`, `bg-sidebar`, `bg-card`, `text-1`, `text-2`,
+   * `border-1`, `border-2`.
+   */
+  --color-page: var(--bg-page);
+  --color-sidebar: var(--bg-sidebar);
+  --color-card: var(--bg-card);
+  --color-input: var(--bg-input);
+  --color-input-strong: var(--bg-input-strong);
+  --color-chip: var(--bg-chip);
 
-  /* Dominant 60% — page background */
-  --color-bg: #ffffff;
-  --color-background: #ffffff;
+  --color-text-1: var(--text-1);
+  --color-text-2: var(--text-2);
+  --color-text-3: var(--text-3);
 
-  /* Secondary surface 30% — sidebar, panels */
-  --color-surface: #f8fafc; /* slate-50 */
+  --color-border-1: var(--border-1);
+  --color-border-2: var(--border-2);
+  --color-border-strong: var(--border-strong);
 
-  /* Surface-2: cards */
-  --color-card: #ffffff;
-  --color-card-foreground: #0f172a;
+  /*
+   * shadcn token bridge — shadcn-generated components use bare names
+   * (`bg-background`, `bg-primary`, `text-foreground`, etc.). Aliased here so
+   * the existing shadcn smoke-test surfaces (Button, Input, Card, Dialog,
+   * Switch) keep working after the redesign.
+   */
+  --color-background: var(--bg-page);
+  --color-foreground: var(--text-1);
+  --color-muted: var(--bg-input);
+  --color-muted-foreground: var(--text-2);
+  --color-popover: var(--bg-card);
+  --color-popover-foreground: var(--text-1);
+  --color-secondary: var(--bg-input);
+  --color-secondary-foreground: var(--text-1);
 
-  /* Borders / dividers */
-  --color-border: #e2e8f0; /* slate-200 */
-  --color-border-strong: #cbd5e1; /* slate-300 */
-  --color-input: #e2e8f0;
-  --color-ring: #4f46e5;
-
-  /* Text */
-  --color-fg: #0f172a; /* slate-900 */
-  --color-foreground: #0f172a;
-  --color-fg-muted: #475569; /* slate-600 */
-  --color-muted-foreground: #475569;
-  --color-fg-subtle: #94a3b8; /* slate-400 */
-  --color-subtle: #94a3b8;
-
-  /* Muted surfaces (shadcn) */
-  --color-muted: #f1f5f9; /* slate-100 */
-
-  /* Popover (shadcn) */
-  --color-popover: #ffffff;
-  --color-popover-foreground: #0f172a;
-
-  /* Primary (mapped to accent so shadcn primary buttons inherit) */
-  --color-primary: #4f46e5;
+  --color-primary: #7a9f6e;
   --color-primary-foreground: #ffffff;
 
-  /* Secondary (shadcn) — slate surface */
-  --color-secondary: #f1f5f9;
-  --color-secondary-foreground: #0f172a;
+  --color-card-foreground: var(--text-1);
 
-  /* Accent (10%) — indigo-600 */
-  --color-accent: #4f46e5; /* indigo-600 */
-  --color-accent-hover: #4338ca; /* indigo-700 */
+  /* Accent — constant across skins. Moss is the brand primary
+     (swapped from terra 2026-05-17 per user preference). */
+  --color-accent: #7a9f6e;
+  --color-accent-2: #d97757;
+  --color-accent-3: #5e8cb2;
+  --color-accent-4: #c8a04a;
+  --color-accent-5: #9e5e72;
   --color-accent-foreground: #ffffff;
+  --color-accent-hover: #6a8b5e;
 
-  /* Semantic */
-  --color-success: #16a34a; /* green-600 */
-  --color-success-bg: #f0fdf4; /* green-50 */
-  --color-warning: #d97706; /* amber-600 */
-  --color-warning-bg: #fffbeb; /* amber-50 */
-  --color-destructive: #dc2626; /* red-600 */
+  /* Functional — constant across skins */
+  --color-success: #5c8a4a;
+  --color-warn: #c68a2e;
+  --color-warning: #c68a2e;
+  --color-danger: #b85450;
+  --color-destructive: #b85450;
   --color-destructive-foreground: #ffffff;
-  --color-destructive-bg: #fef2f2; /* red-50 */
-  --color-info: #0284c7; /* sky-600 */
-  --color-info-bg: #f0f9ff; /* sky-50 */
 
-  /* -- Typography --------------------------------------------------------- */
+  /* shadcn ring + input border bridge */
+  --color-ring: #7a9f6e;
 
+  /* ── Typography ─────────────────────────────────────────────────────── */
   --font-sans:
-    'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-    'Helvetica Neue', Arial, sans-serif;
+    'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-mono:
-    'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+    'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
     'Courier New', monospace;
 
-  /* Type ramp — per UI-SPEC.md §Typography */
-  --text-display: 2.25rem; /* 36px */
-  --text-display--line-height: 1.15;
-  --text-h1: 1.75rem; /* 28px */
-  --text-h1--line-height: 1.2;
-  --text-h2: 1.25rem; /* 20px */
-  --text-h2--line-height: 1.3;
-  --text-h3: 1rem; /* 16px */
-  --text-h3--line-height: 1.4;
-  --text-body: 1rem; /* 16px */
-  --text-body--line-height: 1.5;
-  --text-small: 0.875rem; /* 14px */
-  --text-small--line-height: 1.5;
-  --text-caption: 0.75rem; /* 12px */
-  --text-caption--line-height: 1.4;
+  /* Type ramp (handoff foundations.jsx) */
+  --text-display: 3.5rem; /* 56px */
+  --text-display--line-height: 60px;
+  --text-display--font-weight: 500;
 
-  /* -- Spacing ------------------------------------------------------------ */
+  --text-h1: 2rem; /* 32px */
+  --text-h1--line-height: 38px;
+  --text-h1--font-weight: 500;
+
+  --text-h2: 1.375rem; /* 22px */
+  --text-h2--line-height: 28px;
+  --text-h2--font-weight: 500;
+
+  --text-h3: 1.0625rem; /* 17px */
+  --text-h3--line-height: 24px;
+  --text-h3--font-weight: 500;
+
+  --text-body: 0.875rem; /* 14px */
+  --text-body--line-height: 20px;
+  --text-body--font-weight: 400;
+
+  --text-small: 0.75rem; /* 12px */
+  --text-small--line-height: 16px;
+  --text-small--font-weight: 400;
+
+  --text-mono: 0.6875rem; /* 11px */
+  --text-mono--line-height: 16px;
+  --text-mono--font-weight: 500;
+  --text-mono--letter-spacing: 0.08em;
+
+  /* ── Spacing — 4px base scale ───────────────────────────────────────── */
   /*
-   * Tailwind v4 default 4px scale is affirmed.
-   * --spacing-touch maps to Tailwind utilities `min-h-touch`, `min-w-touch`, `h-touch`,
-   * etc. → 44×44px floor per WCAG 2.5.5 (D-24).
+   * Standard Tailwind 4px scale stays. We add named alias tokens for the
+   * "magic" geometry values from the handoff so they're discoverable as
+   * utilities (`h-control`, `min-h-touch`, `h-cta`, `h-scale-cell`).
    */
-  --spacing-touch: 44px;
+  --spacing-control: 32px; /* all single-line interactive controls */
+  --spacing-touch: 44px; /* WCAG AA touch-target floor */
+  --spacing-cta: 48px; /* mobile primary CTA */
+  --spacing-scale-cell: 56px; /* runner scale-cell tappable target */
+  --spacing-topbar: 56px; /* builder/report top bar row 1 */
+  --spacing-doctabs: 38px; /* builder/report top bar row 2 (tabs) */
+  --spacing-test-row: 48px; /* list test row height */
+  --spacing-folder-card: 56px; /* list folder card height */
+  --spacing-sidebar-row: 32px; /* builder sidebar block row */
 
-  /* -- Border radius ------------------------------------------------------ */
-
+  /* ── Border radius — locked to 8px ──────────────────────────────────── */
+  /*
+   * Per handoff: all buttons / cards / inputs / chips use 8px.
+   * Smaller chips (block-type 20×20 icon-squares) use 4px for hierarchy.
+   * 44/32 reserved for phone bezel in runner.
+   */
   --radius-xs: 2px;
-  --radius-sm: 4px;
-  --radius: 6px; /* shadcn default --radius reference */
-  --radius-md: 6px;
-  --radius-lg: 8px; /* block cards, dialogs */
-  --radius-xl: 12px; /* block catalog panel */
-  --radius-2xl: 16px; /* empty-state illustration container */
+  --radius-sm: 4px; /* tiny chips, option-remove-x */
+  --radius: 8px;
+  --radius-md: 8px;
+  --radius-lg: 8px;
+  --radius-xl: 8px;
+  --radius-2xl: 8px;
+  --radius-phone-screen: 32px;
+  --radius-phone-bezel: 44px;
   --radius-full: 9999px;
 
-  /* -- Shadow ------------------------------------------------------------- */
+  /* ── Shadows — bound to semantic tokens (swap per skin via vars above) ─ */
+  --shadow-xs: var(--sh-xs);
+  --shadow-sm: var(--sh-sm);
+  --shadow-md: var(--sh-md);
+  --shadow-lg: var(--sh-lg);
 
-  --shadow-xs: 0 1px 2px 0 rgb(15 23 42 / 0.04);
-  --shadow-sm: 0 1px 2px 0 rgb(15 23 42 / 0.05), 0 1px 1px 0 rgb(15 23 42 / 0.03);
-  --shadow-md: 0 4px 6px -1px rgb(15 23 42 / 0.07), 0 2px 4px -2px rgb(15 23 42 / 0.05);
-  --shadow-lg: 0 10px 15px -3px rgb(15 23 42 / 0.08), 0 4px 6px -4px rgb(15 23 42 / 0.05);
-  --shadow-xl: 0 20px 25px -5px rgb(15 23 42 / 0.1), 0 8px 10px -6px rgb(15 23 42 / 0.05);
-
-  /* -- Motion ------------------------------------------------------------- */
+  /* ── Motion ─────────────────────────────────────────────────────────── */
+  --ease-out: cubic-bezier(0.2, 0.7, 0.3, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-deliberate: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-linear: linear;
 
   --duration-instant: 0ms;
-  --duration-fast: 100ms;
-  --duration-normal: 200ms;
-  --duration-slow: 300ms;
+  --duration-snap: 120ms; /* hover, color shifts */
+  --duration-quick: 180ms; /* toggles, expand/collapse */
+  --duration-standard: 240ms; /* panel reveals, progress fills */
+  --duration-deliberate: 360ms; /* modal enter, focus mode */
 
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
-  --ease-linear: linear;
+  /* Aliases for back-compat with Phase 1 motion names */
+  --duration-fast: 120ms;
+  --duration-normal: 240ms;
+  --duration-slow: 360ms;
 }

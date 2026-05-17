@@ -29,12 +29,13 @@ import {
 test.describe('auth', () => {
   test('login page renders and magic-link form submits', async ({ page }) => {
     await page.goto('/auth/login');
-    await expect(page.getByRole('heading', { name: /Sign in to Maxytest/i })).toBeVisible();
+    // Design-system v1 rewrite (2026-05-17) — RU copy.
+    await expect(page.getByRole('heading', { name: /Войти в Maxytest/i })).toBeVisible();
 
     // Form interaction — fill + click Send.
     const emailInput = page.getByLabel(/email/i);
     await emailInput.fill('e2e-display@example.com');
-    await page.getByRole('button', { name: /send magic link/i }).click();
+    await page.getByRole('button', { name: /Получить ссылку/i }).click();
 
     // Live mode (real Supabase) → masked email visible on /auth/sent.
     // Without service-role creds + Supabase reachable, the route might
@@ -71,7 +72,10 @@ test.describe('auth', () => {
   });
 
   test('sign-out from /app clears session and returns to /auth/login', async ({ page }) => {
-    test.fixme(!e2eCredentialsAvailable, 'requires SUPABASE_SERVICE_ROLE_KEY for session injection');
+    test.fixme(
+      !e2eCredentialsAvailable,
+      'requires SUPABASE_SERVICE_ROLE_KEY for session injection',
+    );
 
     const designer = await createDesignerUser();
     try {
@@ -85,7 +89,10 @@ test.describe('auth', () => {
 
       // Sign out via the avatar / topbar menu.
       // UI-SPEC.md §"Workspace top bar" — menu trigger labelled by initials.
-      await page.getByRole('button', { name: /account|avatar|menu/i }).first().click();
+      await page
+        .getByRole('button', { name: /account|avatar|menu/i })
+        .first()
+        .click();
       await page.getByRole('menuitem', { name: /sign out|log out/i }).click();
 
       await expect(page).toHaveURL(/\/auth\/login/, { timeout: 10_000 });

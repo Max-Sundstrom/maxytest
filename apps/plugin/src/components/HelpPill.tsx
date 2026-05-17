@@ -1,65 +1,68 @@
-// apps/plugin/src/components/HelpPill.tsx — Phase 02.2 Plan 05 Task 3.
+// apps/plugin/src/components/HelpPill.tsx — design-system v1 rewrite (2026-05-17).
 //
-// UI-SPEC §"Component Inventory" #11 — secondary-pill style "Помощь" button
-// pinned to the bottom-left of the plugin window. Opens the README via
-// figma.openExternal (parent IPC → sandbox handler).
-//
-// Position is `absolute` per UI-SPEC; the parent (ui.tsx) sets
-// position:relative on its main wrapper so the pill anchors correctly
-// inside the 360×540 surface.
-
-import { useState } from 'react';
+// Source: handoff `.fp-help` + `.fp-footer-help` — rounded pill, 32px tall,
+// 1px border, info-circle icon left of "Помощь" label, lives at the bottom
+// of the plugin body via `margin-top: auto + padding-top: 16` so it pins
+// to the footer regardless of body content height.
 
 interface HelpPillProps {
   onClick: () => void;
 }
 
 export default function HelpPill({ onClick }: HelpPillProps) {
-  const [hover, setHover] = useState(false);
-
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      aria-label="Открыть помощь"
-      style={{
-        position: 'absolute',
-        bottom: 16,
-        left: 16,
-        height: 36,
-        padding: '0 16px',
-        borderRadius: 9999,
-        border: '1px solid var(--color-border)',
-        background: hover ? 'var(--color-bg-muted)' : 'var(--color-bg)',
-        color: 'var(--color-text)',
-        fontSize: 14,
-        fontWeight: 500,
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 6,
-        cursor: 'pointer',
-        transition: 'background 120ms ease-out',
-      }}
-    >
-      {/* Inline SVG `?` 14×14 — UI-SPEC §"Iconography" row 7 */}
-      <svg
-        width="14"
-        height="14"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
+    <div style={{ marginTop: 'auto', paddingTop: 16 }}>
+      <button
+        type="button"
+        onClick={onClick}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          padding: '0 12px',
+          height: 32,
+          borderRadius: 999,
+          border: '1px solid #E5E7EB',
+          background: '#FFFFFF',
+          color: '#1F2328',
+          font: '500 13px var(--font-sans, "IBM Plex Sans"), system-ui',
+          cursor: 'pointer',
+          transition: 'border-color 120ms cubic-bezier(.2,.7,.3,1)',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.borderColor = 'var(--color-accent)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.borderColor = '#E5E7EB';
+        }}
       >
-        <circle cx="12" cy="12" r="10" />
-        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-        <path d="M12 17h.01" />
-      </svg>
-      <span>Помощь</span>
-    </button>
+        <span
+          aria-hidden="true"
+          style={{
+            width: 16,
+            height: 16,
+            borderRadius: '50%',
+            border: '1.5px solid currentColor',
+            display: 'grid',
+            placeItems: 'center',
+            color: '#6B7280',
+          }}
+        >
+          <svg
+            width="9"
+            height="9"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M12 8v0M12 12v4" />
+          </svg>
+        </span>
+        <span>Помощь</span>
+      </button>
+    </div>
   );
 }

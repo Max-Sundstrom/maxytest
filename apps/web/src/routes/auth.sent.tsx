@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { z } from 'zod';
+import { AuthShell } from '@/components/auth/AuthShell';
 import { MagicLinkSentScreen } from '@/components/auth/MagicLinkSentScreen';
 
 /**
@@ -19,9 +20,9 @@ const searchSchema = z.object({
 function AuthSentRoute() {
   const { to } = Route.useSearch();
   return (
-    <main className="min-h-[100dvh] bg-background px-4">
+    <AuthShell>
       <MagicLinkSentScreen maskedEmail={to} />
-    </main>
+    </AuthShell>
   );
 }
 

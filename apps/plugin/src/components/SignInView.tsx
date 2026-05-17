@@ -1,20 +1,17 @@
-// apps/plugin/src/components/SignInView.tsx — Phase 02.2 Plan 05 Task 4.
+// apps/plugin/src/components/SignInView.tsx — design-system v1 rewrite (2026-05-17).
 //
-// Screen S1 — UI-SPEC §"Screen S1 — Sign-in (no cached session)" + §"Component
-// Inventory" #10. Title + body helper + PrimaryCta + ErrorCard on timeout.
+// Visual: handoff plugin body styling (white bg via plugin-shell, 20px
+// padding, IBM Plex pair, 14/20 body copy, 44px pill CTA). Stays as the
+// pre-flow Screen 0 — handoff plugin pre-supposes auth; our integration runs
+// the magic-link Realtime handshake here first.
 //
-// Click flow (CRITICAL — Pitfall 3 user-gesture):
+// CRITICAL — Pitfall 3 (user-gesture):
 //   handleSignIn → setPending(true) → signInWithMagicLink(VIEWER_URL).
-//   signInWithMagicLink ITSELF synchronously posts the open-external IPC
-//   as its FIRST statement (see apps/plugin/src/lib/auth.ts) — no await
-//   happens in this component before that call. Re-ordering this handler
-//   to await anything before signInWithMagicLink would silently break the
-//   OS-browser launch on Figma Desktop.
-//
-// VIEWER_URL: literal-substituted by esbuild --define (apps/plugin/build.mjs
-// provides the http://localhost:5173 fallback when env unset; the H2 fix
-// keeps that fallback out of source so production builds never accidentally
-// ship a localhost URL).
+//   signInWithMagicLink ITSELF synchronously posts the open-external IPC as
+//   its FIRST statement (see apps/plugin/src/lib/auth.ts). No await happens
+//   in this component BEFORE that call. Re-ordering this handler to await
+//   anything before signInWithMagicLink would silently break the OS-browser
+//   launch on Figma Desktop. Plan 05 contract preserved.
 
 import { useState } from 'react';
 
@@ -23,8 +20,6 @@ import { signInWithMagicLink } from '../lib/auth';
 import ErrorCard from './ErrorCard';
 import PrimaryCta from './PrimaryCta';
 
-// VIEWER_URL is build-time-injected via esbuild --define (Plan 01 build.mjs).
-// The 'http://localhost:5173' fallback lives in build.mjs, NOT here (H2 fix).
 declare const process: { env: { VIEWER_URL: string } };
 
 interface SignInViewProps {
@@ -44,9 +39,6 @@ export default function SignInView({ onSignedIn }: SignInViewProps) {
   const handleSignIn = async () => {
     setPending(true);
     setError(null);
-    // signInWithMagicLink synchronously fires the open-external IPC on its
-    // first line; no awaits live BEFORE that postMessage in either this
-    // component or the orchestrator. Pitfall 3 invariant.
     const VIEWER_URL = process.env.VIEWER_URL;
     const { session, error: authError } = await signInWithMagicLink(VIEWER_URL);
     setPending(false);
@@ -57,17 +49,14 @@ export default function SignInView({ onSignedIn }: SignInViewProps) {
         title: 'Вход не удался',
         message:
           code === 'auth_timeout'
-            ? 'Сессия входа истекла за 10 минут. Попробуйте снова.'
-            : 'Не удалось завершить вход. Попробуйте снова.',
+            ? 'Сессия входа истекла за 10 минут. Попробуй снова.'
+            : 'Не получилось завершить вход. Попробуй снова.',
       });
       return;
     }
     if (session) onSignedIn();
   };
 
-  // Timeout/error UI replaces the main content per UI-SPEC §"Screen S1"
-  // Edge cases. ErrorCard exposes its own retry CTA that clears the error
-  // and returns the view to the fresh S1 state.
   if (error) {
     return (
       <ErrorCard
@@ -84,39 +73,48 @@ export default function SignInView({ onSignedIn }: SignInViewProps) {
       aria-labelledby="signin-title"
       style={{
         flex: 1,
-        padding: '32px 24px 96px', // bottom padding leaves room for HelpPill
+        padding: 20,
         display: 'flex',
         flexDirection: 'column',
-        alignItems: 'stretch',
+        gap: 14,
+        background: '#FFFFFF',
+        overflow: 'auto',
       }}
     >
+      <span
+        style={{
+          font: '500 11px/16px var(--font-mono, "IBM Plex Mono"), monospace',
+          letterSpacing: '0.08em',
+          textTransform: 'uppercase',
+          color: 'var(--color-accent)',
+        }}
+      >
+        Maxytest · Вход
+      </span>
       <h1
         id="signin-title"
         style={{
-          fontSize: 16,
-          fontWeight: 600,
-          lineHeight: 1.3,
-          color: 'var(--color-text)',
-          marginBottom: 12,
+          font: '600 22px/28px var(--font-sans, "IBM Plex Sans"), system-ui',
+          color: '#1F2328',
+          letterSpacing: '-0.005em',
+          margin: 0,
         }}
       >
-        Войдите в Maxytest
+        Войди в Maxytest
       </h1>
-
       <p
         style={{
-          fontSize: 14,
-          fontWeight: 400,
-          color: 'var(--color-text-muted)',
-          lineHeight: 1.5,
-          maxWidth: 320,
-          marginBottom: 32,
+          font: '400 14px/20px var(--font-sans, "IBM Plex Sans"), system-ui',
+          color: '#6B7280',
+          margin: 0,
         }}
       >
-        Мы откроем ваш браузер для входа. После входа вернитесь сюда — плагин запомнит вход.
+        Откроем браузер для входа magic-link. После входа вернись в Figma — плагин запомнит сессию.
       </p>
 
-      <PrimaryCta label="Войти в Maxytest" onClick={handleSignIn} pending={pending} />
+      <div style={{ marginTop: 16 }}>
+        <PrimaryCta label="Войти в Maxytest" onClick={handleSignIn} pending={pending} />
+      </div>
     </main>
   );
 }

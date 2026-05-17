@@ -1,57 +1,49 @@
 /**
- * <OpenQuestionRunner> — Plan 01-05 Task 4 / UI-SPEC.md §"Runner block screens"
- *                       + §"Copy Lock" Runner + Pitfall 14 (iOS 16px floor) +
- *                       D-24 tap-targets.
+ * <OpenQuestionRunner> — design-system v1 rewrite (2026-05-17).
  *
- * Single-textarea respondent input for an `open_question` block. Renders the
- * designer's question text, a textarea with the locked placeholder
- * "Type your answer here…", optional min/max-length validation, and a sticky
- * bottom CTA labeled "Next" (intermediate) or "Finish" (last question before
- * thanks).
+ * Source: design-system handoff `js/maxitest-runner.jsx` <RunnerScreenScale />
+ * pattern adapted for free-form text input (handoff doesn't ship an
+ * open_question artboard; we lift the same step-tag + h2 + content + split
+ * footer shell and swap in a textarea).
  *
- * Key contracts:
- *   - text-base (16px) on the textarea prevents iOS Safari auto-zoom on
- *     focus (Pitfall 14a).
- *   - Sticky CTA footer honours `env(safe-area-inset-bottom)` so the button
- *     stays above the iOS home-indicator strip (Pitfall 14e).
- *   - Validation error copy is LOCKED to UI-SPEC §"Copy Lock" Runner.
- *   - On submit we call `onSubmit({ text })`; the parent (RunnerShell)
- *     handles persistence + advance.
+ * Layout:
+ *   - mono "Вопрос N из M" step-tag
+ *   - 22/28 weight-500 h2 — designer's `question`
+ *   - 13.5/18 lede-sm — designer's `helper` (optional)
+ *   - 16px-base textarea (Pitfall 14a — prevents iOS Safari auto-zoom)
+ *   - Sticky split footer: 48px back button (disabled on first question) + 48px moss CTA
+ *
+ * Validation preserves Phase 1 contract: empty / min-length / max-length
+ * messages from the original locked copy, translated to Russian.
+ *
+ * env(safe-area-inset-bottom) on footer padding keeps CTA above iOS home
+ * indicator strip.
  */
 
 import { useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form';
+import { ArrowRight, ChevronLeft } from 'lucide-react';
 import type { Block } from '@/lib/blocks/types';
 import type { OpenQuestionContent } from '@/lib/blocks/schemas';
 
 export interface OpenQuestionRunnerProps {
   block: Block;
-  /** Last question block before thanks → CTA reads "Finish" instead of "Next". */
+  /** 0-based question index (welcome-corrected). */
+  questionIndex: number;
+  /** Total questions in the test (blocks minus welcome and thanks). */
+  questionTotal: number;
+  /** Last question block before thanks → CTA reads "Завершить" instead of "Далее". */
   isLast: boolean;
+  /** First question (no Back button). */
+  isFirst: boolean;
   onSubmit: (answer: { text: string }) => void;
+  onBack?: () => void;
   /** Pre-fill on resume. */
   initialValue?: string;
 }
 
-/**
- * Build a per-block runtime Zod schema honoring the designer's min/max-length
- * settings. We rebuild on every render of a NEW block because the
- * thresholds are part of the block content and change per block.
- *
- * Copy lock (UI-SPEC §Copy Lock Runner):
- *   - "Add a few words before continuing." (empty required)
- *   - "Add at least {N} characters." (below min when min > 1)
- *   - "Keep it under {N} characters. ({M} too many)" (above max)
- *
- * Zod 4 note: .refine()'s 2nd argument is a static config object (not a
- * function). We use .superRefine() to compute the per-input message for the
- * "too many" case where M = inputLength - max.
- */
 function buildAnswerSchema(content: OpenQuestionContent) {
   const min = content.min_length ?? 0;
   const max = content.max_length ?? 5000;
@@ -59,19 +51,19 @@ function buildAnswerSchema(content: OpenQuestionContent) {
   return z.object({
     text: z
       .string()
-      .min(1, 'Add a few words before continuing.')
+      .min(1, 'Напиши хотя бы несколько слов, прежде чем продолжить.')
       .superRefine((v, ctx) => {
         if (v.length < min && min > 1) {
           ctx.addIssue({
             code: 'custom',
-            message: `Add at least ${min} characters.`,
+            message: `Минимум ${min} символов.`,
             path: [],
           });
         }
         if (v.length > max) {
           ctx.addIssue({
             code: 'custom',
-            message: `Keep it under ${max} characters. (${v.length - max} too many)`,
+            message: `Уложись в ${max} символов. (Лишних: ${v.length - max})`,
             path: [],
           });
         }
@@ -83,8 +75,12 @@ type AnswerForm = { text: string };
 
 export function OpenQuestionRunner({
   block,
+  questionIndex,
+  questionTotal,
   isLast,
+  isFirst,
   onSubmit,
+  onBack,
   initialValue = '',
 }: OpenQuestionRunnerProps) {
   const content = block.content as OpenQuestionContent;
@@ -96,8 +92,6 @@ export function OpenQuestionRunner({
     mode: 'onSubmit',
   });
 
-  // Reset when the block id changes (navigating between question blocks
-  // re-uses the same component instance under React reconciliation).
   useEffect(() => {
     form.reset({ text: initialValue });
   }, [block.id]);
@@ -106,45 +100,167 @@ export function OpenQuestionRunner({
     onSubmit({ text: values.text });
   }
 
+  const error = form.formState.errors.text?.message;
+
   return (
-    <Form {...form}>
-      <form className="flex flex-1 flex-col" onSubmit={form.handleSubmit(handle)}>
-        <div className="flex-1">
-          <h1 className="mb-4 text-h1 font-semibold text-foreground">{content.question}</h1>
-          {content.helper && (
-            <p className="mb-4 text-body text-muted-foreground">{content.helper}</p>
-          )}
-          <FormField
-            control={form.control as never}
-            name="text"
-            render={({ field }) => (
-              <FormItem>
-                <FormControl>
-                  <Textarea
-                    {...field}
-                    autoFocus
-                    rows={6}
-                    placeholder="Type your answer here…"
-                    className="min-h-32 text-base"
-                    aria-label="Your answer"
-                  />
-                </FormControl>
-                <FormMessage className="text-caption text-destructive" />
-              </FormItem>
-            )}
-          />
-        </div>
-        <div
-          className="sticky bottom-0 mt-6 -mx-4 sm:-mx-6 border-t border-border bg-background/95 px-4 py-4 backdrop-blur-sm sm:px-6"
+    <form
+      onSubmit={form.handleSubmit(handle)}
+      style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}
+    >
+      <div
+        style={{
+          flex: 1,
+          overflow: 'auto',
+          minHeight: 0,
+          padding: '16px 24px 24px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+        }}
+      >
+        <span
           style={{
-            paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))',
+            font: '500 11px var(--font-mono)',
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            color: 'var(--text-3)',
+            marginTop: 4,
           }}
         >
-          <Button type="submit" variant="default" size="lg" className="min-h-touch w-full">
-            {isLast ? 'Finish' : 'Next'}
-          </Button>
-        </div>
-      </form>
-    </Form>
+          Вопрос {questionIndex + 1} из {questionTotal}
+        </span>
+        <h2
+          style={{
+            font: '500 22px/28px var(--font-sans)',
+            color: 'var(--text-1)',
+            letterSpacing: '-0.005em',
+            margin: '4px 0 4px',
+          }}
+        >
+          {content.question}
+        </h2>
+        {content.helper ? (
+          <p
+            style={{
+              font: '400 13.5px/18px var(--font-sans)',
+              color: 'var(--text-2)',
+              margin: '0 0 8px',
+            }}
+          >
+            {content.helper}
+          </p>
+        ) : null}
+
+        <textarea
+          autoFocus
+          rows={6}
+          placeholder="Введите ответ…"
+          aria-label="Ваш ответ"
+          aria-invalid={!!error}
+          {...form.register('text')}
+          style={{
+            // 16px base font on textarea blocks iOS Safari auto-zoom on focus
+            // (Pitfall 14a from Phase 1).
+            font: '400 16px/22px var(--font-sans)',
+            padding: '12px 14px',
+            background: 'var(--bg-input)',
+            border: `1px solid ${error ? 'var(--color-danger)' : 'var(--border-1)'}`,
+            borderRadius: 'var(--radius)',
+            color: 'var(--text-1)',
+            minHeight: 132,
+            resize: 'vertical',
+            outline: 'none',
+            transition:
+              'border-color 120ms cubic-bezier(.2,.7,.3,1), background 120ms cubic-bezier(.2,.7,.3,1)',
+            width: '100%',
+            boxSizing: 'border-box',
+          }}
+          onFocus={(e) => {
+            if (!error) {
+              e.currentTarget.style.borderColor = 'var(--color-accent)';
+              e.currentTarget.style.background = 'var(--bg-input-strong)';
+            }
+          }}
+          onBlur={(e) => {
+            if (!error) {
+              e.currentTarget.style.borderColor = 'var(--border-1)';
+              e.currentTarget.style.background = 'var(--bg-input)';
+            }
+          }}
+        />
+        {error ? (
+          <p
+            role="alert"
+            style={{
+              font: '400 12px/18px var(--font-sans)',
+              color: 'var(--color-danger)',
+              margin: 0,
+            }}
+          >
+            {error}
+          </p>
+        ) : null}
+      </div>
+
+      <footer
+        style={{
+          display: 'flex',
+          padding: '12px 16px 16px',
+          paddingBottom: `calc(16px + env(safe-area-inset-bottom, 0px))`,
+          gap: 8,
+          justifyContent: 'space-between',
+          background: 'var(--bg-page)',
+          borderTop: '1px solid var(--border-2)',
+        }}
+      >
+        {!isFirst && onBack ? (
+          <button
+            type="button"
+            onClick={onBack}
+            style={{
+              height: 48,
+              padding: '0 20px',
+              background: 'transparent',
+              border: 0,
+              color: 'var(--text-2)',
+              font: '500 14px var(--font-sans)',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+            }}
+          >
+            <ChevronLeft size={14} strokeWidth={1.5} aria-hidden="true" />
+            <span>Назад</span>
+          </button>
+        ) : (
+          <span aria-hidden="true" />
+        )}
+        <button
+          type="submit"
+          style={{
+            flex: 1,
+            maxWidth: 240,
+            height: 48,
+            background: 'var(--color-accent)',
+            color: '#fff',
+            border: 0,
+            borderRadius: 'var(--radius)',
+            font: '500 15px var(--font-sans)',
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            transition: 'filter 120ms cubic-bezier(.2,.7,.3,1)',
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.filter = 'brightness(1.05)')}
+          onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
+        >
+          <span>{isLast ? 'Завершить' : 'Далее'}</span>
+          <ArrowRight size={14} strokeWidth={1.5} aria-hidden="true" />
+        </button>
+      </footer>
+    </form>
   );
 }
