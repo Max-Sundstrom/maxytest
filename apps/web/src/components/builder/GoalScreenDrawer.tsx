@@ -183,14 +183,27 @@ export function GoalScreenDrawer({
           overflow: 'hidden',
         }}
       >
-        {/* Frame canvas */}
+        {/* Frame canvas — scrollable in 'width' mode, clamped in 'both' mode.
+            Per handoff hint (maxitest-goalscreen.jsx:63):
+              "По умолчанию масштабирование подгоняет ширину. Используйте
+               «По ширине и высоте», чтобы избежать вертикального
+               прокручивания."
+            So 'width' = fit-to-width with vertical scroll if frame is tall;
+            'both' = fit-to-both = letterbox, no scrollbars.
+
+            Outer stage keeps overflow:hidden so NavBtn + FitToggle (absolutely
+            positioned siblings below) never scroll out of view. The scrollable
+            behaviour is delegated to THIS inner box. */}
         <div
           style={{
             position: 'absolute',
             inset: 0,
             padding: '32px 56px',
-            display: 'grid',
-            placeItems: 'center',
+            overflowY: fitMode === 'width' ? 'auto' : 'hidden',
+            overflowX: 'hidden',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: fitMode === 'width' ? 'flex-start' : 'center',
           }}
         >
           {framesQuery.isLoading ? (
@@ -201,17 +214,37 @@ export function GoalScreenDrawer({
             <img
               src={currentSignedUrl}
               alt={currentFrame.name ?? 'frame'}
-              style={{
-                background: '#FFFFFF',
-                borderRadius: 4,
-                border: '1px solid var(--paper-3)',
-                boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
-                maxWidth: '100%',
-                maxHeight: '100%',
-                width: fitMode === 'width' ? '100%' : 'auto',
-                height: fitMode === 'both' ? '100%' : 'auto',
-                objectFit: 'contain',
-              }}
+              style={
+                fitMode === 'width'
+                  ? {
+                      // Fit-to-width: image takes 100% of inner-stage width and
+                      // grows in height per its intrinsic aspect ratio. If the
+                      // resulting height exceeds the stage, the wrapping
+                      // overflowY:auto scrolls it vertically (matches the
+                      // handoff hint).
+                      width: '100%',
+                      height: 'auto',
+                      display: 'block',
+                      background: '#FFFFFF',
+                      borderRadius: 4,
+                      border: '1px solid var(--paper-3)',
+                      boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
+                    }
+                  : {
+                      // Fit-to-both: clamp by BOTH dimensions; browser
+                      // honours both max-* simultaneously and preserves
+                      // aspect ratio — image is letterboxed in whichever
+                      // axis has spare room. No object-fit needed because
+                      // we don't set width/height explicitly.
+                      maxWidth: '100%',
+                      maxHeight: '100%',
+                      display: 'block',
+                      background: '#FFFFFF',
+                      borderRadius: 4,
+                      border: '1px solid var(--paper-3)',
+                      boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
+                    }
+              }
             />
           ) : (
             <StagePlaceholder text="Подписываю URL рендера…" />
