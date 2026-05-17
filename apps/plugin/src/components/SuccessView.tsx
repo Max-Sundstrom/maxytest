@@ -1,28 +1,59 @@
-// apps/plugin/src/components/SuccessView.tsx — handoff Screen 03 "Import complete".
+// apps/plugin/src/components/SuccessView.tsx — Phase 02.2 Plan 07 Task 3.
 //
-// Source: handoff `maxitest-plugin.jsx` <PluginSuccess /> + .fp-back /
-// .fp-result / .fp-result-warn CSS.
+// Screen S4 (UI-SPEC §"Screen S4 — Success" + Component Inventory #9).
+// Replaces the design-system v1 paste-url stub of this component — the
+// real Plan 07 success contract is a deep-link CTA, not a share code
+// because the plugin path creates the study itself and hands the user
+// a clickable link back into Maxytest.
 //
-// Layout (white plugin body, 20px padding, 14px gaps):
-//   - Back pill (32px) to choose-prototype screen
-//   - Result card:
-//       big green checkmark SVG (56×56 circle + check stroke)
-//       title "Импорт завершён"
-//       mono code (e.g. "kMNN1o") — the short share code/run-token returned
-//         by the publish RPC; user copies it into the test block in the web app
-//       body copy explaining what to do with the code
-//   - Warning paragraph with red ❗ mark — "Если меняешь прототип, надо
-//     импортировать заново."
+// Layout:
+//   - Top-right: SignOutMenu (still accessible per UI-SPEC §"Focus order").
+//   - Top-left: "← Назад" SecondaryPill that resets to S2 picker.
+//   - Card (8px radius lock):
+//       - 50×50 outline check-circle (accent stroke).
+//       - "Опубликовано" — 20/600 centered.
+//       - "{flowName}" — 14/600 centered.
+//       - "{framesCount} {frameWord(framesCount)} · {hotspotsCount} hotspots"
+//         — 12/400 muted centered.
+//       - PrimaryCta "Open in Maxytest →" inside card-inner-width.
+//   - Replay note (if replayed): "Эта публикация уже была сохранена…"
+//   - Warning paragraph: "! Важно: Если вы внесёте изменения в прототип
+//     в Figma, нужно опубликовать заново — иначе респонденты увидят
+//     прежнюю версию."
 //
-// The share code is the actual `run_token` (or short code) from
-// `publish_prototype_from_plugin` RPC (Phase 02.2 Plan 02 contract).
+// Open-deeplink mechanism: clicking the CTA posts `open-external` IPC to
+// the sandbox, which calls `figma.openExternal(deepLinkUrl)` synchronously
+// (Pitfall 3 — the CTA click IS the user-gesture, so the IPC must fire
+// before any await).
+
+import { frameWord } from '../lib/ui/plural';
+
+import PrimaryCta from './PrimaryCta';
+import SignOutMenu from './SignOutMenu';
 
 interface SuccessViewProps {
-  shareCode: string;
+  flowName: string;
+  framesCount: number;
+  hotspotsCount: number;
+  /** True when the RPC returned an existing prototype (idempotent replay).
+   *  UI shows an extra "уже сохранена" note above the warning. */
+  replayed: boolean;
+  /** Full `${VIEWER_URL}/studies/${study_id}/edit` URL. */
+  deepLinkUrl: string;
+  onOpen: () => void;
   onBack: () => void;
+  onSignOut: () => void;
 }
 
-export default function SuccessView({ shareCode, onBack }: SuccessViewProps) {
+export default function SuccessView({
+  flowName,
+  framesCount,
+  hotspotsCount,
+  replayed,
+  onOpen,
+  onBack,
+  onSignOut,
+}: SuccessViewProps) {
   return (
     <main
       style={{
@@ -33,8 +64,13 @@ export default function SuccessView({ shareCode, onBack }: SuccessViewProps) {
         gap: 14,
         background: '#FFFFFF',
         overflow: 'auto',
+        position: 'relative',
       }}
     >
+      <div style={{ position: 'absolute', top: 12, right: 12 }}>
+        <SignOutMenu onSignOut={onSignOut} />
+      </div>
+
       <button
         type="button"
         onClick={onBack}
@@ -45,16 +81,16 @@ export default function SuccessView({ shareCode, onBack }: SuccessViewProps) {
           gap: 4,
           padding: '0 14px 0 10px',
           height: 32,
-          borderRadius: 999,
-          border: '1px solid #E5E7EB',
+          borderRadius: 8,
+          border: '1px solid var(--border-1)',
           background: '#FFFFFF',
-          color: '#1F2328',
-          font: '500 14px var(--font-sans, "IBM Plex Sans"), system-ui',
+          color: 'var(--text-1)',
+          font: '500 13px var(--font-sans, "IBM Plex Sans"), system-ui',
           cursor: 'pointer',
           transition: 'border-color 120ms cubic-bezier(.2,.7,.3,1)',
         }}
         onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--color-accent)')}
-        onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#E5E7EB')}
+        onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border-1)')}
       >
         <svg
           width="13"
@@ -65,82 +101,119 @@ export default function SuccessView({ shareCode, onBack }: SuccessViewProps) {
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
+          aria-hidden="true"
         >
           <path d="M15 18l-6-6 6-6" />
         </svg>
         <span>Назад</span>
       </button>
 
-      <div
+      <section
+        role="region"
+        aria-label="Публикация завершена"
         style={{
-          background: '#FFFFFF',
-          border: '1px solid #E5E7EB',
-          borderRadius: 12,
-          padding: '24px 20px',
+          background: 'var(--color-success-bg)',
+          border: '1px solid var(--border-1)',
+          borderRadius: 8,
+          padding: 24,
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          gap: 12,
+          gap: 8,
+          boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
         }}
       >
-        <div style={{ marginBottom: 8 }}>
-          <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
-            <circle cx="28" cy="28" r="26" stroke="#22C55E" strokeWidth="2.5" />
-            <path
-              d="M16 28 L25 36 L40 20"
-              stroke="#22C55E"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              fill="none"
-            />
-          </svg>
-        </div>
-        <h3
+        <svg width="50" height="50" viewBox="0 0 50 50" fill="none" aria-hidden="true">
+          <circle
+            cx="25"
+            cy="25"
+            r="23"
+            stroke="var(--color-success)"
+            strokeWidth="2.5"
+            fill="none"
+          />
+          <path
+            d="M15 26 L22 33 L36 17"
+            stroke="var(--color-success)"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+          />
+        </svg>
+        <h2
           style={{
-            font: '600 17px var(--font-sans, "IBM Plex Sans"), system-ui',
-            color: '#1F2328',
+            font: '600 20px var(--font-sans, "IBM Plex Sans"), system-ui',
+            color: 'var(--text-1)',
             margin: 0,
+            marginTop: 8,
           }}
         >
-          Импорт завершён
-        </h3>
+          Опубликовано
+        </h2>
         <div
           style={{
-            font: '600 22px var(--font-mono, "IBM Plex Mono"), monospace',
-            color: '#1F2328',
-            letterSpacing: '0.02em',
-            userSelect: 'all',
+            font: '600 14px var(--font-sans, "IBM Plex Sans"), system-ui',
+            color: 'var(--text-1)',
+            textAlign: 'center',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            maxWidth: '100%',
+            whiteSpace: 'nowrap',
           }}
         >
-          {shareCode}
+          {flowName}
         </div>
+        <div
+          style={{
+            font: '400 12px var(--font-sans, "IBM Plex Sans"), system-ui',
+            color: 'var(--text-2)',
+            textAlign: 'center',
+          }}
+        >
+          {framesCount} {frameWord(framesCount)} · {hotspotsCount} hotspots
+        </div>
+        <div style={{ marginTop: 16, width: '100%' }}>
+          <PrimaryCta label="Open in Maxytest →" onClick={onOpen} />
+        </div>
+      </section>
+
+      {replayed && (
         <p
           style={{
-            font: '400 13.5px/19px var(--font-sans, "IBM Plex Sans"), system-ui',
-            color: '#9CA3AF',
+            font: '400 12px/18px var(--font-sans, "IBM Plex Sans"), system-ui',
+            color: 'var(--text-2)',
             margin: 0,
+            padding: '0 4px',
             textAlign: 'center',
-            padding: '0 8px',
           }}
         >
-          Вставь этот код в блок «Figma-прототип» внутри теста на Maxytest — прототип привяжется к
-          блоку и появится в превью.
+          Эта публикация уже была сохранена — повторение не создало дубликата.
         </p>
-      </div>
+      )}
 
       <p
+        role="note"
         style={{
-          font: '400 13px/19px var(--font-sans, "IBM Plex Sans"), system-ui',
-          color: '#9CA3AF',
+          font: '400 12px/18px var(--font-sans, "IBM Plex Sans"), system-ui',
+          color: 'var(--text-2)',
           margin: 0,
           padding: '0 4px',
-          textAlign: 'center',
+          textAlign: 'left',
         }}
       >
-        <span style={{ color: '#DC2626', fontWeight: 600 }}>❗</span>{' '}
-        <b style={{ color: '#1F2328', fontWeight: 600 }}>Важно:</b> если меняешь прототип в Figma —
-        нужно импортировать заново, иначе результаты теста будут с устаревшей версией.
+        <span
+          style={{
+            color: 'var(--color-warning-mark)',
+            fontWeight: 700,
+            marginRight: 4,
+          }}
+          aria-hidden="true"
+        >
+          !
+        </span>
+        <b style={{ color: 'var(--text-1)', fontWeight: 600 }}>Важно:</b> если вы внесёте изменения
+        в прототип в Figma, нужно опубликовать заново — иначе респонденты увидят прежнюю версию.
       </p>
     </main>
   );
