@@ -1,8 +1,15 @@
 /**
  * <BlockCatalogPanel> — Plan 01-03 Task 8 / UI-SPEC.md §"<BlockCatalogPanel>".
  *
- * shadcn <Sheet side="right" w-[360px]> with 4 grouped sections:
+ * Side panel (Drawer side="right" maxWidth=420) with 4 grouped sections:
  *   Survey · Prototype · Usability · Information architecture
+ *
+ * 2026-05-17 — migrated from shadcn `<Sheet>` (semi-transparent overlay
+ * bled into the underlying Builder content) to our `<Drawer>` component
+ * which ships an opaque-ish scrim (40% ink-0 + 2px backdrop-blur) and the
+ * full design-system geometry. Same component the GoalScreenDrawer uses;
+ * see `apps/web/src/components/ui/drawer.tsx` and memory entry
+ * [[project_drawer_pattern_pending]].
  *
  * Phase 1: only `open_question` is enabled. welcome/thanks are auto-added at
  * study creation and are NOT rendered in the catalog (hardcoded exclusion).
@@ -14,7 +21,7 @@
  */
 
 import { toast } from 'sonner';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Drawer, DrawerHeader } from '@/components/ui/drawer';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { BLOCK_CATEGORIES, BLOCK_REGISTRY, type BlockCategory } from '@/lib/blocks/registry';
@@ -86,18 +93,13 @@ export function BlockCatalogPanel({ studyId, workspaceId }: BlockCatalogPanelPro
   };
 
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
-      <SheetContent
-        side="right"
-        className="w-[360px] max-w-[90vw] border-l border-border bg-surface p-0 sm:max-w-[360px]"
-      >
-        <SheetHeader className="h-14 border-b border-border px-6 py-0">
-          <SheetTitle className="flex h-14 items-center text-h2 font-semibold">
-            Add block
-          </SheetTitle>
-        </SheetHeader>
-
-        <ScrollArea className="h-[calc(100vh-56px)]">
+    <Drawer open={open} onOpenChange={setOpen} side="right" ariaLabel="Add block" maxWidth={420}>
+      <DrawerHeader title="Add block" onClose={() => setOpen(false)} />
+      {/* flex-1 + min-h-0 — classic Flexbox+overflow combo so the ScrollArea
+          fills the remaining drawer height and scrolls long category lists
+          instead of pushing the drawer past its 100dvh boundary. */}
+      <div className="flex min-h-0 flex-1 flex-col">
+        <ScrollArea className="h-full">
           <div className="flex flex-col gap-6 px-4 py-6">
             {BLOCK_CATEGORIES.map((category) => {
               const rows = (Object.keys(BLOCK_REGISTRY) as BlockType[])
@@ -130,8 +132,8 @@ export function BlockCatalogPanel({ studyId, workspaceId }: BlockCatalogPanelPro
             })}
           </div>
         </ScrollArea>
-      </SheetContent>
-    </Sheet>
+      </div>
+    </Drawer>
   );
 }
 
