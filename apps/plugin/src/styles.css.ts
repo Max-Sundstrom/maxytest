@@ -18,8 +18,10 @@
 //
 // Token names mirror apps/web/src/styles/tokens.css so the plugin and the
 // web app share the same vocabulary. Skin model: paper (default) / white /
-// dark — swap by writing `data-skin` on <html>. The plugin's "header strip"
-// uses --color-bg-header = #9E5E72 (plum, handoff §Plugin spec).
+// dark — swap by writing `data-skin` on <html>. The custom plum
+// `<PluginHeader>` was removed 2026-05-17 — Figma's own plugin chrome
+// (black bar with manifest icon + plugin name + X) already serves that
+// role, the second bar was a duplicate.
 //
 // IMPORTANT: do not add Tailwind directives, @import statements, or any
 // rule that depends on external resources. Figma's iframe ships a system
@@ -129,12 +131,8 @@ export const cssString = `
   --color-warn:       #C68A2E;
   --color-danger:     #B85450;
 
-  /* Plugin-specific: dark plum header strip (handoff §Plugin spec) */
-  --color-bg-header:    #9E5E72;
-  --color-text-invert:  #FFFFFF;
-
   /* Back-compat aliases for existing plugin components
-     (PluginHeader/PrimaryCta/ErrorCard/DotsLoader/HelpPill/SignInView). */
+     (PrimaryCta/ErrorCard/DotsLoader/HelpPill/SignInView). */
   --color-bg:            var(--bg-page);
   --color-bg-muted:      var(--bg-input);
   --color-text:          var(--text-1);

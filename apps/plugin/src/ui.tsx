@@ -58,7 +58,6 @@ import { uuidv7 } from 'uuidv7';
 
 import DotsLoader from './components/DotsLoader';
 import ErrorCard from './components/ErrorCard';
-import PluginHeader from './components/PluginHeader';
 import ProgressView, { type ProgressStage } from './components/ProgressView';
 import PrototypePickerView from './components/PrototypePickerView';
 import SignInView from './components/SignInView';
@@ -622,94 +621,78 @@ function App() {
       )}
 
       {screen.kind === 'sign-in' && (
-        <>
-          <PluginHeader onClose={() => sendIpc({ type: 'close' })} />
-          <SignInView
-            onSignedIn={() => {
-              void (async () => {
-                const wsId = await fetchFirstWorkspaceId();
-                if (!wsId) {
-                  setScreen({
-                    kind: 'error',
-                    code: 'plugin_rpc_failed',
-                    message:
-                      'Не удалось определить ваш воркспейс. Создайте его в Maxytest и войдите снова.',
-                    recoveryTo: 'sign-in',
-                  });
-                  return;
-                }
-                workspaceIdRef.current = wsId;
-                setScreen({ kind: 'picker', flows: null });
-                sendIpc({ type: 'detect-flows' });
-              })();
-            }}
-          />
-        </>
+        <SignInView
+          onSignedIn={() => {
+            void (async () => {
+              const wsId = await fetchFirstWorkspaceId();
+              if (!wsId) {
+                setScreen({
+                  kind: 'error',
+                  code: 'plugin_rpc_failed',
+                  message:
+                    'Не удалось определить ваш воркспейс. Создайте его в Maxytest и войдите снова.',
+                  recoveryTo: 'sign-in',
+                });
+                return;
+              }
+              workspaceIdRef.current = wsId;
+              setScreen({ kind: 'picker', flows: null });
+              sendIpc({ type: 'detect-flows' });
+            })();
+          }}
+        />
       )}
 
-      {screen.kind === 'picker' && (
-        <>
-          <PluginHeader onClose={() => sendIpc({ type: 'close' })} />
-          {screen.flows === null ? (
-            <main
-              style={{
-                flex: 1,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <DotsLoader />
-            </main>
-          ) : (
-            <PrototypePickerView
-              flows={screen.flows}
-              onPublish={(flow) => handlePublish(flow, /* retry */ false)}
-              onRefresh={handleRefresh}
-              onSignOut={() => void handleSignOut()}
-            />
-          )}
-        </>
-      )}
+      {screen.kind === 'picker' &&
+        (screen.flows === null ? (
+          <main
+            style={{
+              flex: 1,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <DotsLoader />
+          </main>
+        ) : (
+          <PrototypePickerView
+            flows={screen.flows}
+            onPublish={(flow) => handlePublish(flow, /* retry */ false)}
+            onRefresh={handleRefresh}
+            onSignOut={() => void handleSignOut()}
+          />
+        ))}
 
       {screen.kind === 'progress' && (
-        <>
-          <PluginHeader onClose={() => sendIpc({ type: 'close' })} />
-          <ProgressView
-            flowName={`${screen.flow.pageName} → ${screen.flow.nodeName}`}
-            stage={screen.stage}
-            done={screen.done}
-            total={screen.total}
-          />
-        </>
+        <ProgressView
+          flowName={`${screen.flow.pageName} → ${screen.flow.nodeName}`}
+          stage={screen.stage}
+          done={screen.done}
+          total={screen.total}
+        />
       )}
 
       {screen.kind === 'success' && (
-        <>
-          <PluginHeader onClose={() => sendIpc({ type: 'close' })} />
-          <SuccessView
-            flowName={`${screen.flow.pageName} → ${screen.flow.nodeName}`}
-            framesCount={screen.framesCount}
-            hotspotsCount={screen.hotspotsCount}
-            replayed={screen.replayed}
-            deepLinkUrl={screen.deepLinkUrl}
-            onOpen={() => handleOpenInMaxytest(screen.deepLinkUrl)}
-            onBack={handleBackFromSuccess}
-            onSignOut={() => void handleSignOut()}
-          />
-        </>
+        <SuccessView
+          flowName={`${screen.flow.pageName} → ${screen.flow.nodeName}`}
+          framesCount={screen.framesCount}
+          hotspotsCount={screen.hotspotsCount}
+          replayed={screen.replayed}
+          deepLinkUrl={screen.deepLinkUrl}
+          onOpen={() => handleOpenInMaxytest(screen.deepLinkUrl)}
+          onBack={handleBackFromSuccess}
+          onSignOut={() => void handleSignOut()}
+        />
       )}
 
       {screen.kind === 'error' && (
-        <>
-          <PluginHeader onClose={() => sendIpc({ type: 'close' })} />
-          <ErrorScreen
-            code={screen.code}
-            message={screen.message}
-            onRetry={handleRetryFromError}
-            onHelp={openHelp}
-          />
-        </>
+        <ErrorScreen
+          code={screen.code}
+          message={screen.message}
+          onRetry={handleRetryFromError}
+          onHelp={openHelp}
+        />
       )}
     </div>
   );
