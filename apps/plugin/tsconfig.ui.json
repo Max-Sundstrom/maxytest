@@ -20,5 +20,6 @@
     "src/types.ts",
     "src/schemas.ts",
     "src/__tests__/**/*.ts"
-  ]
+  ],
+  "exclude": ["src/lib/sandbox/**/*.ts", "src/lib/sandbox-storage.ts"]
 }

@@ -8,5 +8,10 @@
     "noEmit": true,
     "types": ["@figma/plugin-typings"]
   },
-  "include": ["src/code.ts", "src/lib/sandbox/**/*.ts", "src/types.ts"]
+  "include": [
+    "src/code.ts",
+    "src/lib/sandbox/**/*.ts",
+    "src/lib/sandbox-storage.ts",
+    "src/types.ts"
+  ]
 }
