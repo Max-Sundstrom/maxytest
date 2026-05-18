@@ -36,6 +36,7 @@ import type { Block } from '@/lib/blocks/types';
 import { blockVisualOf } from '@/lib/blocks/visual';
 import { supabase } from '@/lib/supabase/auth';
 import { FunnelSection } from './FunnelSection';
+import { PlaybackDrawer } from './PlaybackDrawer';
 import { PrototypeReport } from './PrototypeReport';
 import { ReportSankey } from './ReportSankey';
 import { ReportSidebar } from './ReportSidebar';
@@ -60,6 +61,12 @@ export function ReportShell({ studyId }: ReportShellProps) {
   const prototypeBlock = useMemo(() => blocks.find((b: Block) => b.type === 'prototype'), [blocks]);
 
   const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
+
+  // Plan 03-06 — drawer that closes ROADMAP SC5 (ANALYTICS-09). State lives
+  // here so the «Смотреть сессии» CTA in FocusedBlockCard can toggle it
+  // (D-64). PlaybackDrawer's local state (selectedSessionId, filter) is
+  // intentionally unmounted on close so the next open starts fresh.
+  const [playbackOpen, setPlaybackOpen] = useState(false);
 
   // Default the sidebar's active row to the prototype block once blocks land.
   useEffect(() => {
@@ -293,10 +300,27 @@ export function ReportShell({ studyId }: ReportShellProps) {
               funnel={funnel}
               funnelSignedUrls={funnelSignedUrls}
               validSessionCount={outcomes.length}
+              onOpenPlayback={() => setPlaybackOpen(true)}
             />
           )}
         </main>
       </div>
+
+      {/* Plan 03-06 — Playback drawer (ANALYTICS-09, ROADMAP SC5).
+          Conditionally mounted so `useDesignerSessions` stays cold until
+          the designer asks for it; closing unmounts → next open starts
+          fresh per D-64. */}
+      {playbackOpen && prototypeBlock && pvId ? (
+        <PlaybackDrawer
+          open={playbackOpen}
+          onOpenChange={setPlaybackOpen}
+          studyId={studyId}
+          blockId={prototypeBlock.id}
+          prototypeVersionId={pvId}
+          frames={frames}
+          outcomes={outcomes}
+        />
+      ) : null}
     </div>
   );
 }
@@ -329,6 +353,8 @@ interface FocusedBlockCardProps {
   funnelSignedUrls: Record<string, string>;
   /** Plan 03-04 — denominator for the FunnelSection `N из Total` text. */
   validSessionCount: number;
+  /** Plan 03-06 — opens the PlaybackDrawer (D-64). */
+  onOpenPlayback: () => void;
 }
 
 function FocusedBlockCard({
@@ -349,6 +375,7 @@ function FocusedBlockCard({
   funnel,
   funnelSignedUrls,
   validSessionCount,
+  onOpenPlayback,
 }: FocusedBlockCardProps) {
   const visual = blockVisualOf(block.type);
   const ChipIcon = visual.icon;
@@ -408,6 +435,36 @@ function FocusedBlockCard({
         <span style={{ font: '400 13px var(--font-sans)', color: 'var(--text-2)' }}>
           {responses} ответов
         </span>
+        {/* Plan 03-06 — discovery CTA for per-respondent playback. The
+            button only makes sense if there's at least one valid session
+            to look at; we hide it when responses == 0 so the report
+            doesn't promise something it can't deliver yet. */}
+        {responses > 0 ? (
+          <button
+            type="button"
+            onClick={onOpenPlayback}
+            aria-label="Открыть список сессий и воспроизведение"
+            style={{
+              font: '500 13px var(--font-sans)',
+              color: 'var(--text-1)',
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border-1)',
+              borderRadius: 'var(--radius)',
+              padding: '0 12px',
+              height: 32,
+              cursor: 'pointer',
+              transition: 'background 120ms cubic-bezier(.2,.7,.3,1)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--bg-chip)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'var(--bg-card)';
+            }}
+          >
+            Смотреть сессии
+          </button>
+        ) : null}
       </header>
 
       {/* Task callout */}
