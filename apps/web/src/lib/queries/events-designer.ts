@@ -18,6 +18,14 @@
  *     deferred to Phase 8 — the JS reduce is fine for Phase 2's single-
  *     frame / single-cohort scope.
  *
+ * Both hooks accept an optional `dateRange?: DateRange` parameter (Plan
+ * 03.1-07 — gap closure for ROADMAP SC1). When non-null, the queryFn chains
+ * `.gte('client_ts', startISO).lte('client_ts', endISO)` so the per-frame
+ * heatmap and per-frame stats narrow with the report's «Дата» control in
+ * lockstep with `useBlockEvents` / `useDesignerSessions` (Plan 03.1-02).
+ * The tuple is part of the queryKey so each window owns its TanStack Query
+ * cache slot.
+ *
  * The two hooks deliberately fetch the same partition twice rather than
  * sharing a query — they ask for different columns, and TanStack Query
  * caches them under independent keys so updating filters on one doesn't
@@ -26,6 +34,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 
+import type { DateRange } from '@/lib/analytics/date-range';
 import { supabase } from '@/lib/supabase/auth';
 
 /** Shape of the columns the heatmap canvas + misclick decomposition need. */
@@ -55,9 +64,17 @@ export function useFrameEvents(
   prototypeVersionId: string | null | undefined,
   frameId: string | null | undefined,
   filters: UseFrameEventsFilters = {},
+  dateRange?: DateRange,
 ) {
   return useQuery({
-    queryKey: ['frame-events', prototypeVersionId, frameId, filters] as const,
+    queryKey: [
+      'frame-events',
+      prototypeVersionId,
+      frameId,
+      filters,
+      dateRange?.startISO ?? null,
+      dateRange?.endISO ?? null,
+    ] as const,
     enabled: !!prototypeVersionId && !!frameId,
     // Reports rarely change mid-view; 30s staleTime avoids hammering the
     // server when a designer toggles a filter back and forth.
@@ -69,6 +86,10 @@ export function useFrameEvents(
         .eq('prototype_version_id', prototypeVersionId!)
         .eq('frame_id', frameId!);
       if (filters.eventType) q = q.eq('event_type', filters.eventType);
+      // Plan 03.1-07 — narrow to the report's date window (SC1 closure).
+      if (dateRange) {
+        q = q.gte('client_ts', dateRange.startISO).lte('client_ts', dateRange.endISO);
+      }
       const { data, error } = await q;
       if (error) throw error;
       return (data as FrameEventRow[]) ?? [];
@@ -93,18 +114,30 @@ export interface FrameStats {
 export function useFrameStats(
   prototypeVersionId: string | null | undefined,
   frameId: string | null | undefined,
+  dateRange?: DateRange,
 ) {
   return useQuery({
-    queryKey: ['frame-stats', prototypeVersionId, frameId] as const,
+    queryKey: [
+      'frame-stats',
+      prototypeVersionId,
+      frameId,
+      dateRange?.startISO ?? null,
+      dateRange?.endISO ?? null,
+    ] as const,
     enabled: !!prototypeVersionId && !!frameId,
     staleTime: 30_000,
     queryFn: async (): Promise<FrameStats> => {
-      const { data, error } = await supabase
+      let q = supabase
         .from('events')
         .select('hit_target_id, session_id')
         .eq('prototype_version_id', prototypeVersionId!)
         .eq('frame_id', frameId!)
         .eq('event_type', 'tap');
+      // Plan 03.1-07 — narrow to the report's date window (SC1 closure).
+      if (dateRange) {
+        q = q.gte('client_ts', dateRange.startISO).lte('client_ts', dateRange.endISO);
+      }
+      const { data, error } = await q;
       if (error) throw error;
       const taps = data ?? [];
       const totalClicks = taps.length;
