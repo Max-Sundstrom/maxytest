@@ -1,24 +1,26 @@
 /**
- * <ReportSankey /> — pan/zoom sankey board for the prototype block report.
+ * <ReportSankey /> — d3-sankey-layouted pan/zoom board for the prototype block report.
  *
- * Source: design-system handoff `js/maxitest-report.jsx` <DenseSankey /> +
- * ADDENDUM-v3 §1 "Пути" sankey spec.
+ * Source: 03-RESEARCH.md §"Pattern 2: Sankey rendered as data-driven SVG via
+ * d3-sankey layout" (lines 560-666) + Pitfall 1/2/3 (lines 933-999) + 03-PATTERNS.md §16.
  *
- * Layout philosophy:
- *   - Frames laid out in COLUMNS — one column per traversal-step index, up to
- *     3 frames per column. Columns are 100px apart starting at x=24.
- *   - Goal frames (from block.content.finish_frame_ids) carry a green pip
- *     in their top-right corner.
- *   - Flow paths are SVG quadratic-bezier curves rendered with the fixed
- *     production color `#A8C5E8` and stepped-down stroke widths so the
- *     viewer reads "thick trunk → thinner branches" as traffic volume.
+ * Phase 3 / Plan 03-02 refactor:
+ *   - REMOVED stub `FlowPaths` component + column-distribute layout (was 277-390 / 66-81).
+ *   - ADDED d3-sankey layout via `useMemo` (with clone-before-call discipline, Pitfall 1).
+ *   - ADDED terminal-class nodes `TERMINAL_SUCCESS` («Цель», green accent) and
+ *     `TERMINAL_GIVEUP` («Сдались», warning accent) — D-43.
+ *   - ADDED standalone `OTHER` node for hidden rare paths — D-41.
+ *   - ADDED self-loop overlay arcs rendered ONLY in `mode === 'all'` (Pitfall 3 —
+ *     d3-sankey can't lay out self-loops).
+ *   - ADDED `<ModeToggle />` top-left overlay — D-42, «Первое прохождение» (DAG) /
+ *     «Все прохождения» (with cycles).
  *
- *   v1 limitation (Phase 02.3-05): real per-transition counts and the
- *   layered sankey-layout algorithm are NOT computed yet — that lands in
- *   Phase 3 (ANALYTICS-04). The flow paths shown here are stub curves laid
- *   out from frame positions so the visual lands; the path topology matches
- *   the handoff illustration with thickness fading 40→30→22→16→12 along the
- *   primary trunk and 18→12 / 8→6→5 on secondaries.
+ * Pan/zoom shell preserved verbatim (constants, fitToContainer, wheel/drag handlers,
+ * bottom-left ZoomBtn group).
+ *
+ * Sankey data comes from parent `ReportShell` via `transitionGraph(...)` — see
+ * `@/lib/analytics/transition-graph.ts`. The component is presentation-only; it
+ * does NOT compute the graph itself.
  *
  * Pan/zoom — "FigJam-like":
  *   - Wheel/trackpad scroll → zoom (anchored at the cursor)
@@ -30,73 +32,100 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Maximize2, Minus, Plus } from 'lucide-react';
+import {
+  sankey as d3Sankey,
+  sankeyLinkHorizontal,
+  sankeyJustify,
+  type SankeyNode as D3SankeyNode,
+  type SankeyLink as D3SankeyLink,
+} from 'd3-sankey';
 import type { Frame } from '@/lib/queries/prototypes';
+import type {
+  SankeyGraph,
+  SankeyGraphNode,
+  SankeyGraphEdge,
+} from '@/lib/analytics/transition-graph';
 
-const COL_SPACING = 100;
-const COL_X_START = 24;
-const COL_Y_OFFSETS = [60, 180, 300];
 const FRAME_W = 56;
 const FRAME_H = 64;
 const VIEWPORT_HEIGHT = 420;
+const BOARD_WIDTH = 1320;
 const MIN_SCALE = 0.4;
 const MAX_SCALE = 2.0;
 const ZOOM_STEP = 1.15;
 
 export interface ReportSankeyProps {
+  /** Pre-computed sankey graph from `transitionGraph(...)` (parent owns memoization). */
+  sankey: SankeyGraph;
+  /** D-42 mode toggle — 'first' = DAG, 'all' = cycles + self-loops visible. */
+  mode: 'first' | 'all';
+  /** Mode change handler (ReportShell holds the source-of-truth state). */
+  onModeChange: (mode: 'first' | 'all') => void;
+  /** Used to render frame thumbnails inside `kind='frame'` nodes. */
   frames: Frame[];
-  /** Frame ids treated as success/goal nodes (block.content.finish_frame_ids). */
-  goalFrameIds: string[];
   /** Optional starting frame highlight (block.content.starting_frame_id). */
   startingFrameId?: string;
 }
 
-interface ColumnNode {
-  frame: Frame;
-  isGoal: boolean;
-  isStart: boolean;
-  col: number;
-  row: number;
-}
+// d3-sankey type aliases — uses our domain shapes as the user-data N/L generics.
+type LayoutNode = D3SankeyNode<SankeyGraphNode, SankeyGraphEdge>;
+type LayoutLink = D3SankeyLink<SankeyGraphNode, SankeyGraphEdge>;
 
-export function ReportSankey({ frames, goalFrameIds, startingFrameId }: ReportSankeyProps) {
-  const goalSet = useMemo(() => new Set(goalFrameIds), [goalFrameIds]);
-
-  // Distribute frames across columns: 13 max, 3 per column. Real layout
-  // (post-Phase 3) would derive columns from transition-frequency layers.
-  const columns: ColumnNode[][] = useMemo(() => {
-    const cols: ColumnNode[][] = [];
-    frames.forEach((frame, idx) => {
-      const c = Math.floor(idx / 3);
-      const r = idx % 3;
-      if (!cols[c]) cols[c] = [];
-      cols[c]!.push({
-        frame,
-        isGoal: goalSet.has(frame.frame_id),
-        isStart: frame.frame_id === startingFrameId,
-        col: c,
-        row: r,
-      });
-    });
-    return cols;
-  }, [frames, goalSet, startingFrameId]);
-
-  const totalCols = columns.length;
-  const boardWidth = Math.max(1320, COL_X_START + totalCols * COL_SPACING + 48);
-
+export function ReportSankey({
+  sankey,
+  mode,
+  onModeChange,
+  frames,
+  startingFrameId,
+}: ReportSankeyProps) {
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
   const containerRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null);
 
+  // d3-sankey layout — clone inputs BEFORE passing (Pitfall 1: d3-sankey
+  // mutates input arrays in-place; cloning protects TanStack Query cache).
+  const layout = useMemo(() => {
+    if (sankey.nodes.length === 0 || sankey.edges.length === 0) return null;
+    const generator = d3Sankey<SankeyGraphNode, SankeyGraphEdge>()
+      .nodeId((n) => n.id)
+      .nodeWidth(FRAME_W)
+      .nodePadding(12)
+      .nodeAlign(sankeyJustify)
+      .extent([
+        [24, 24],
+        [BOARD_WIDTH - 120, VIEWPORT_HEIGHT - 24],
+      ]);
+
+    const nodesClone = sankey.nodes.map((n) => ({ ...n }));
+    const edgesClone = sankey.edges.map((e) => ({ ...e }));
+    return generator({ nodes: nodesClone, links: edgesClone });
+  }, [sankey]);
+
+  // Build lookup for self-loop overlay (Pitfall 3) — d3-sankey can't lay out
+  // A→A, so we render them as curved arcs over the laid-out nodes.
+  const selfLoopOverlay = useMemo(() => {
+    if (!layout || mode !== 'all' || sankey.selfLoops.length === 0) return [];
+    const byId = new Map<string, LayoutNode>();
+    for (const n of layout.nodes) byId.set(n.id, n);
+    return sankey.selfLoops
+      .map((sl) => {
+        const node = byId.get(sl.frameId);
+        if (!node || node.x0 == null || node.x1 == null || node.y0 == null) return null;
+        return { node, count: sl.sessionsCount };
+      })
+      .filter((v): v is { node: LayoutNode; count: number } => v !== null);
+  }, [layout, mode, sankey.selfLoops]);
+
   const fitToContainer = useCallback(() => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
-    const scaleX = rect.width / boardWidth;
+    const scaleX = rect.width / BOARD_WIDTH;
     const scaleY = rect.height / VIEWPORT_HEIGHT;
     const scale = Math.max(MIN_SCALE, Math.min(scaleX, scaleY, 1));
-    const cx = (rect.width - boardWidth * scale) / 2;
+    const cx = (rect.width - BOARD_WIDTH * scale) / 2;
     const cy = (rect.height - VIEWPORT_HEIGHT * scale) / 2;
     setTransform({ x: cx, y: cy, scale });
-  }, [boardWidth]);
+  }, []);
 
   // Fit once on mount and on resize.
   useEffect(() => {
@@ -129,8 +158,6 @@ export function ReportSankey({ frames, goalFrameIds, startingFrameId }: ReportSa
     const el = containerRef.current;
     if (!el) return;
     const handler = (e: WheelEvent) => {
-      // React's synthetic events default to passive on touch devices —
-      // attach a manual listener for prevent-default semantics.
       e.preventDefault();
     };
     el.addEventListener('wheel', handler, { passive: false });
@@ -138,7 +165,6 @@ export function ReportSankey({ frames, goalFrameIds, startingFrameId }: ReportSa
   }, []);
 
   const onMouseDown = (e: React.MouseEvent) => {
-    // Don't pan when clicking buttons in the zoom controls.
     if ((e.target as HTMLElement).closest('[data-sankey-control]')) return;
     draggingRef.current = {
       x: e.clientX,
@@ -177,6 +203,8 @@ export function ReportSankey({ frames, goalFrameIds, startingFrameId }: ReportSa
     });
   };
 
+  const empty = sankey.nodes.length === 0 || sankey.edges.length === 0;
+
   return (
     <div
       ref={containerRef}
@@ -206,25 +234,67 @@ export function ReportSankey({ frames, goalFrameIds, startingFrameId }: ReportSa
           position: 'absolute',
           left: 0,
           top: 0,
-          width: boardWidth,
+          width: BOARD_WIDTH,
           height: VIEWPORT_HEIGHT,
           transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
           transformOrigin: '0 0',
           transition: draggingRef.current ? 'none' : 'transform 120ms cubic-bezier(.2,.7,.3,1)',
         }}
       >
-        <FlowPaths boardWidth={boardWidth} />
-        {columns.map((col, ci) =>
-          col.map((node, ri) => (
-            <FrameNode
-              key={`${ci}-${ri}-${node.frame.frame_id}`}
-              node={node}
-              x={COL_X_START + ci * COL_SPACING}
-              y={COL_Y_OFFSETS[ri] ?? 60}
-            />
-          )),
+        {layout && (
+          <svg
+            style={{
+              position: 'absolute',
+              inset: 0,
+              width: BOARD_WIDTH,
+              height: VIEWPORT_HEIGHT,
+              pointerEvents: 'none',
+            }}
+            viewBox={`0 0 ${BOARD_WIDTH} ${VIEWPORT_HEIGHT}`}
+          >
+            {/* Edges — sankeyLinkHorizontal generator */}
+            {layout.links.map((link, i) => (
+              <SankeyEdge
+                key={`edge-${i}`}
+                link={link}
+                validSessionCount={sankey.validSessionCount}
+              />
+            ))}
+
+            {/* Self-loop overlay arcs — only in 'all' mode (Pitfall 3) */}
+            {selfLoopOverlay.map(({ node, count }, i) => (
+              <SelfLoopArc key={`loop-${i}`} node={node} count={count} />
+            ))}
+          </svg>
         )}
+
+        {/* Nodes — rendered as positioned absolute divs over the SVG */}
+        {layout?.nodes.map((node) => {
+          const x = node.x0 ?? 0;
+          const y = node.y0 ?? 0;
+          if (node.kind === 'frame') {
+            const frame = frames.find((f) => f.frame_id === node.id);
+            return (
+              <FrameNode
+                key={node.id}
+                frame={frame}
+                name={node.name}
+                isStart={frame?.frame_id === startingFrameId}
+                x={x}
+                y={y}
+              />
+            );
+          }
+          if (node.kind === 'terminal') {
+            return <TerminalNode key={node.id} id={node.id} name={node.name} x={x} y={y} />;
+          }
+          // kind === 'other'
+          return <OtherNode key={node.id} name={node.name} x={x} y={y} />;
+        })}
       </div>
+
+      {/* Mode toggle — top-left overlay (NOT inside <svg>, NOT inside pan/zoom transform) */}
+      <ModeToggle mode={mode} onChange={onModeChange} />
 
       {/* Zoom controls — bottom-left, stacked */}
       <div
@@ -255,8 +325,8 @@ export function ReportSankey({ frames, goalFrameIds, startingFrameId }: ReportSa
         </ZoomBtn>
       </div>
 
-      {/* Empty state — no frames to chart yet */}
-      {frames.length === 0 ? (
+      {/* Empty state — no data to chart yet */}
+      {empty ? (
         <div
           style={{
             position: 'absolute',
@@ -274,124 +344,72 @@ export function ReportSankey({ frames, goalFrameIds, startingFrameId }: ReportSa
   );
 }
 
-// ─── Flow paths (stub, hand-curated topology) ───────────────────────────
+// ─── Sankey edge ────────────────────────────────────────────────────────
 
-function FlowPaths({ boardWidth }: { boardWidth: number }) {
-  // The path coordinates below are scaled along the X-axis to fit the
-  // dynamic board width. Y-coordinates stay constant because we want the
-  // trunk to ride near the top regardless of how many columns we render.
-  const w = boardWidth;
-  const x = (pct: number) => Math.round((pct / 1320) * w);
+function SankeyEdge({ link, validSessionCount }: { link: LayoutLink; validSessionCount: number }) {
+  const path = sankeyLinkHorizontal<SankeyGraphNode, SankeyGraphEdge>()(link) ?? '';
+  // D-44 — clamp thickness 1..40 px.
+  const thicknessPx = Math.max(1, Math.min(40, link.width ?? 1));
+  // After layout, link.source/target are replaced by node references (Pitfall 2).
+  const srcName = (link.source as SankeyGraphNode).name;
+  const tgtName = (link.target as SankeyGraphNode).name;
+  const value = link.value ?? 0;
+  const percent = validSessionCount > 0 ? Math.round((value / validSessionCount) * 100) : 0;
+  // D-45 verbatim — «A → B · N сессий · X% потока»
+  const tooltip = `${srcName} → ${tgtName} · ${value} сессий · ${percent}% потока`;
   return (
-    <svg
-      style={{
-        position: 'absolute',
-        inset: 0,
-        width: '100%',
-        height: '100%',
-        pointerEvents: 'none',
-      }}
-      viewBox={`0 0 ${w} 420`}
-      preserveAspectRatio="none"
+    <path
+      d={path}
+      fill="none"
+      stroke="var(--border-2)"
+      strokeOpacity={0.55}
+      strokeWidth={thicknessPx}
+      style={{ pointerEvents: 'auto' }}
     >
-      {/* Primary trunk — width steps down 40→30→22→16→12 along the flow */}
-      <path
-        d={`M ${x(50)} 90 C ${x(100)} 90, ${x(100)} 90, ${x(150)} 90 C ${x(200)} 90, ${x(200)} 90, ${x(250)} 90 C ${x(300)} 90, ${x(300)} 90, ${x(350)} 90`}
-        stroke="#A8C5E8"
-        strokeWidth="40"
-        fill="none"
-        opacity="0.55"
-        strokeLinecap="round"
-      />
-      <path
-        d={`M ${x(350)} 90 C ${x(400)} 110, ${x(400)} 160, ${x(450)} 180 C ${x(500)} 200, ${x(500)} 200, ${x(550)} 200`}
-        stroke="#A8C5E8"
-        strokeWidth="30"
-        fill="none"
-        opacity="0.55"
-        strokeLinecap="round"
-      />
-      <path
-        d={`M ${x(550)} 200 C ${x(600)} 220, ${x(600)} 240, ${x(650)} 240 C ${x(700)} 240, ${x(700)} 240, ${x(750)} 220 C ${x(800)} 200, ${x(800)} 180, ${x(850)} 170`}
-        stroke="#A8C5E8"
-        strokeWidth="22"
-        fill="none"
-        opacity="0.55"
-        strokeLinecap="round"
-      />
-      <path
-        d={`M ${x(850)} 170 C ${x(900)} 160, ${x(900)} 120, ${x(950)} 110 C ${x(1000)} 100, ${x(1000)} 100, ${x(1050)} 110`}
-        stroke="#A8C5E8"
-        strokeWidth="16"
-        fill="none"
-        opacity="0.55"
-        strokeLinecap="round"
-      />
-      <path
-        d={`M ${x(1050)} 110 C ${x(1100)} 120, ${x(1100)} 200, ${x(1150)} 220 C ${x(1200)} 240, ${x(1200)} 260, ${x(1270)} 260`}
-        stroke="#A8C5E8"
-        strokeWidth="12"
-        fill="none"
-        opacity="0.55"
-        strokeLinecap="round"
-      />
-      {/* Secondary thick branches */}
-      <path
-        d={`M ${x(450)} 180 C ${x(500)} 270, ${x(500)} 320, ${x(550)} 320`}
-        stroke="#A8C5E8"
-        strokeWidth="18"
-        fill="none"
-        opacity="0.45"
-        strokeLinecap="round"
-      />
-      <path
-        d={`M ${x(550)} 320 C ${x(600)} 320, ${x(600)} 320, ${x(650)} 300 C ${x(700)} 280, ${x(700)} 280, ${x(750)} 280`}
-        stroke="#A8C5E8"
-        strokeWidth="12"
-        fill="none"
-        opacity="0.45"
-        strokeLinecap="round"
-      />
-      {/* Thin tributaries */}
-      <path
-        d={`M ${x(250)} 90 C ${x(290)} 110, ${x(300)} 160, ${x(350)} 180`}
-        stroke="#A8C5E8"
-        strokeWidth="6"
-        fill="none"
-        opacity="0.4"
-        strokeLinecap="round"
-      />
-      <path
-        d={`M ${x(750)} 280 C ${x(800)} 280, ${x(800)} 320, ${x(850)} 320`}
-        stroke="#A8C5E8"
-        strokeWidth="8"
-        fill="none"
-        opacity="0.4"
-        strokeLinecap="round"
-      />
-      <path
-        d={`M ${x(850)} 320 C ${x(900)} 320, ${x(900)} 280, ${x(950)} 270`}
-        stroke="#A8C5E8"
-        strokeWidth="6"
-        fill="none"
-        opacity="0.4"
-        strokeLinecap="round"
-      />
-      <path
-        d={`M ${x(950)} 270 C ${x(1000)} 270, ${x(1000)} 200, ${x(1050)} 210`}
-        stroke="#A8C5E8"
-        strokeWidth="5"
-        fill="none"
-        opacity="0.4"
-        strokeLinecap="round"
-      />
-    </svg>
+      <title>{tooltip}</title>
+    </path>
+  );
+}
+
+// ─── Self-loop arc (Pitfall 3) ──────────────────────────────────────────
+
+function SelfLoopArc({ node, count }: { node: LayoutNode; count: number }) {
+  const x0 = node.x0 ?? 0;
+  const x1 = node.x1 ?? 0;
+  const y0 = node.y0 ?? 0;
+  const r = 18;
+  // Curved arc starting at right edge, going up + over, ending at left edge.
+  const d = `M ${x1} ${y0 + 8} C ${x1 + r} ${y0 - r}, ${x0 - r} ${y0 - r}, ${x0} ${y0 + 8}`;
+  const thickness = Math.max(1, Math.min(40, count));
+  return (
+    <path
+      d={d}
+      fill="none"
+      stroke="var(--border-2)"
+      strokeOpacity={0.5}
+      strokeWidth={thickness}
+      style={{ pointerEvents: 'auto' }}
+    >
+      <title>{`${node.name} → ${node.name} (повтор) · ${count} сессий`}</title>
+    </path>
   );
 }
 
 // ─── Frame node ─────────────────────────────────────────────────────────
 
-function FrameNode({ node, x, y }: { node: ColumnNode; x: number; y: number }) {
+function FrameNode({
+  frame,
+  name,
+  isStart,
+  x,
+  y,
+}: {
+  frame: Frame | undefined;
+  name: string;
+  isStart: boolean;
+  x: number;
+  y: number;
+}) {
   return (
     <div
       style={{
@@ -401,45 +419,14 @@ function FrameNode({ node, x, y }: { node: ColumnNode; x: number; y: number }) {
         width: FRAME_W,
         height: FRAME_H,
         borderRadius: 4,
-        border: node.isGoal ? '1.5px solid var(--color-success)' : '1px solid var(--paper-3)',
-        background: '#FFFFFF',
-        boxShadow: node.isGoal ? '0 0 0 1.5px var(--color-success)' : 'none',
+        border: isStart ? '1.5px solid var(--color-accent)' : '1px solid var(--paper-3)',
+        background: 'var(--bg-card)',
+        boxShadow: isStart ? '0 0 0 1.5px var(--color-accent)' : 'none',
         overflow: 'hidden',
       }}
-      title={node.frame.name ?? 'frame'}
+      title={frame?.name ?? name}
     >
       <FrameThumbMock />
-      {node.isGoal ? (
-        <span
-          aria-hidden="true"
-          style={{
-            position: 'absolute',
-            top: -6,
-            right: -6,
-            width: 16,
-            height: 16,
-            borderRadius: '50%',
-            background: 'var(--color-success)',
-            color: '#fff',
-            display: 'grid',
-            placeItems: 'center',
-            border: '1.5px solid var(--paper-1)',
-          }}
-        >
-          <svg
-            width="9"
-            height="9"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="3"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M5 12l5 5L20 7" />
-          </svg>
-        </span>
-      ) : null}
       <span
         aria-hidden="true"
         style={{
@@ -453,22 +440,102 @@ function FrameNode({ node, x, y }: { node: ColumnNode; x: number; y: number }) {
           letterSpacing: '0.04em',
         }}
       >
-        {node.frame.name?.slice(0, 6) ?? 's…'}
+        {(frame?.name ?? name).slice(0, 6) || 's…'}
+      </span>
+    </div>
+  );
+}
+
+// ─── Terminal node («Цель» / «Сдались») ─────────────────────────────────
+
+function TerminalNode({ id, name, x, y }: { id: string; name: string; x: number; y: number }) {
+  const accent = id === 'TERMINAL_SUCCESS' ? 'var(--color-success)' : 'var(--color-warning)';
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: x,
+        top: y,
+        width: FRAME_W,
+        height: FRAME_H,
+        borderRadius: 4,
+        border: '1px solid var(--border-2)',
+        background: 'var(--bg-card)',
+        display: 'flex',
+        alignItems: 'center',
+        overflow: 'hidden',
+      }}
+      title={name}
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          width: 4,
+          height: '100%',
+          background: accent,
+          flexShrink: 0,
+        }}
+      />
+      <span
+        style={{
+          flex: 1,
+          textAlign: 'center',
+          font: '500 11px var(--font-sans)',
+          color: 'var(--text-1)',
+          padding: '0 4px',
+          lineHeight: '14px',
+        }}
+      >
+        {name}
+      </span>
+    </div>
+  );
+}
+
+// ─── Other node ─────────────────────────────────────────────────────────
+
+function OtherNode({ name, x, y }: { name: string; x: number; y: number }) {
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: x,
+        top: y,
+        width: FRAME_W,
+        height: FRAME_H,
+        borderRadius: 4,
+        border: '1px dashed var(--text-3)',
+        background: 'var(--bg-card)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '4px 6px',
+        overflow: 'hidden',
+      }}
+      title={name}
+    >
+      <span
+        style={{
+          font: '500 10px/13px var(--font-sans)',
+          color: 'var(--text-3)',
+          textAlign: 'center',
+        }}
+      >
+        {name}
       </span>
     </div>
   );
 }
 
 // Pure-CSS app-thumb mock (mirrors handoff ProtoSankeyMock — left rail +
-// folder strip + row lines). Same in every node so the sankey reads as
-// "many users hit the same screen" without us needing real thumbs.
+// folder strip + row lines).
 function FrameThumbMock() {
   return (
     <div
       style={{
         width: '100%',
         height: '100%',
-        background: '#FFFFFF',
+        background: 'var(--bg-card)',
         position: 'relative',
         display: 'grid',
         gridTemplateColumns: '8px 12px 1fr',
@@ -493,6 +560,77 @@ function FrameThumbMock() {
         ))}
       </div>
     </div>
+  );
+}
+
+// ─── Mode toggle (D-42) ─────────────────────────────────────────────────
+
+function ModeToggle({
+  mode,
+  onChange,
+}: {
+  mode: 'first' | 'all';
+  onChange: (mode: 'first' | 'all') => void;
+}) {
+  return (
+    <div
+      role="tablist"
+      aria-label="Режим прохождения"
+      data-sankey-control
+      style={{
+        position: 'absolute',
+        left: 16,
+        top: 14,
+        display: 'flex',
+        background: 'var(--bg-card)',
+        border: '1px solid var(--border-1)',
+        borderRadius: 'var(--radius)',
+        boxShadow: 'var(--shadow-sm)',
+        overflow: 'hidden',
+        height: 32,
+      }}
+    >
+      <ModeBtn active={mode === 'first'} onClick={() => onChange('first')}>
+        Первое прохождение
+      </ModeBtn>
+      <span style={{ width: 1, background: 'var(--border-2)' }} />
+      <ModeBtn active={mode === 'all'} onClick={() => onChange('all')}>
+        Все прохождения
+      </ModeBtn>
+    </div>
+  );
+}
+
+function ModeBtn({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      data-sankey-control
+      style={{
+        height: '100%',
+        padding: '0 12px',
+        background: active ? 'var(--color-accent)' : 'transparent',
+        color: active ? 'var(--ink-0)' : 'var(--text-2)',
+        border: 0,
+        font: '500 12px/14px var(--font-sans)',
+        cursor: 'pointer',
+        transition: 'background 120ms cubic-bezier(.2,.7,.3,1)',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {children}
+    </button>
   );
 }
 
