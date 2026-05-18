@@ -24,11 +24,12 @@
  * surface stays accessible while the new design-language summary sits above.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useBlocks } from '@/lib/queries/blocks';
 import { useFrames, type Frame } from '@/lib/queries/prototypes';
 import { useBlockEvents, type BlockEventRow } from '@/lib/queries/block-events';
 import { classifyOutcome, type ClassifyOutcomeResult } from '@/lib/analytics/classify-outcome';
+import type { DatePreset, DateRange } from '@/lib/analytics/date-range';
 import { quantile } from '@/lib/analytics/quantile';
 import { transitionGraph, type SankeyGraph } from '@/lib/analytics/transition-graph';
 import { funnelSteps, type FunnelStep } from '@/lib/analytics/funnel-steps';
@@ -65,6 +66,18 @@ export function ReportShell({ studyId }: ReportShellProps) {
   const prototypeBlock = useMemo(() => blocks.find((b: Block) => b.type === 'prototype'), [blocks]);
 
   const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
+
+  // Plan 03.1-02 (GA1 / D-71) — date filter state. `datePreset` drives the
+  // sidebar trigger label; `dateRange` is the (startISO,endISO) tuple (or
+  // null = «Всё время») threaded through every analytics query. Both are
+  // owned by ReportShell so the sidebar stays a controlled component and
+  // a re-mount of the canvas doesn't reset the user's filter.
+  const [datePreset, setDatePreset] = useState<DatePreset>('all');
+  const [dateRange, setDateRange] = useState<DateRange>(null);
+  const onDateChange = useCallback((range: DateRange, preset: DatePreset) => {
+    setDateRange(range);
+    setDatePreset(preset);
+  }, []);
 
   // Plan 03-06 — drawer that closes ROADMAP SC5 (ANALYTICS-09). State lives
   // here so the «Смотреть сессии» CTA in FocusedBlockCard can toggle it
@@ -106,7 +119,7 @@ export function ReportShell({ studyId }: ReportShellProps) {
   // blockId) tuple; downstream Plans 02/04/05/06 will read the same
   // cached rows via TanStack Query, so this hook is the canonical
   // analytics driver for the whole report.
-  const { data: allEvents = [] } = useBlockEvents(pvId, prototypeBlock?.id);
+  const { data: allEvents = [] } = useBlockEvents(pvId, prototypeBlock?.id, dateRange);
 
   // Group events by session_id → classifyOutcome per session, filter
   // invalid (D-34: sessions with zero frame_enter return null and are
@@ -272,6 +285,9 @@ export function ReportShell({ studyId }: ReportShellProps) {
           onSelectBlock={setActiveBlockId}
           completedCount={stats.completedCount}
           incompleteCount={stats.incompleteCount}
+          dateRange={dateRange}
+          datePreset={datePreset}
+          onDateChange={onDateChange}
         />
 
         <main
@@ -327,6 +343,7 @@ export function ReportShell({ studyId }: ReportShellProps) {
           prototypeVersionId={pvId}
           frames={frames}
           outcomes={outcomes}
+          dateRange={dateRange}
         />
       ) : null}
     </div>

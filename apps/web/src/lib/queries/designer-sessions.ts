@@ -23,6 +23,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 
+import type { DateRange } from '@/lib/analytics/date-range';
 import { supabase } from '@/lib/supabase/auth';
 import type { Database } from '@/lib/supabase/types.gen';
 
@@ -42,22 +43,34 @@ export type DesignerSession = Database['public']['Tables']['sessions']['Row'];
 /**
  * Fetch sessions for a single study, ordered newest-first.
  *
- * @param studyId — `studies.id` (UUID); when null/undefined the query is disabled.
+ * @param studyId   — `studies.id` (UUID); when null/undefined the query is disabled.
+ * @param dateRange — Plan 03.1-02 (GA1/D-71). When non-null, narrows the query to
+ *                     `started_at BETWEEN startISO AND endISO`. We filter on
+ *                     `started_at` (not `client_ts` — sessions don't have that
+ *                     column) so the playback list mirrors the same time window
+ *                     the report's header tiles and sankey use. `null` / omitted
+ *                     disables the filter. Tuple is part of the queryKey so each
+ *                     window gets its own cache slot.
  */
-export function useDesignerSessions(studyId: string | null | undefined) {
+export function useDesignerSessions(studyId: string | null | undefined, dateRange?: DateRange) {
   return useQuery({
-    queryKey: ['designer-sessions', studyId] as const,
+    queryKey: [
+      'designer-sessions',
+      studyId,
+      dateRange?.startISO ?? null,
+      dateRange?.endISO ?? null,
+    ] as const,
     enabled: !!studyId,
     // 30s matches block-events / session-playback. Sessions list is mostly
     // read-only from the designer's POV (respondents create sessions; the
     // designer never modifies them).
     staleTime: 30_000,
     queryFn: async (): Promise<DesignerSession[]> => {
-      const { data, error } = await supabase
-        .from('sessions')
-        .select('*')
-        .eq('study_id', studyId!)
-        .order('started_at', { ascending: false });
+      let query = supabase.from('sessions').select('*').eq('study_id', studyId!);
+      if (dateRange) {
+        query = query.gte('started_at', dateRange.startISO).lte('started_at', dateRange.endISO);
+      }
+      const { data, error } = await query.order('started_at', { ascending: false });
       if (error) throw error;
       return (data as DesignerSession[]) ?? [];
     },

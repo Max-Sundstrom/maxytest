@@ -47,6 +47,7 @@ import { useState, type JSX } from 'react';
 
 import { Drawer, DrawerFooter, DrawerHeader } from '@/components/ui/drawer';
 import type { ClassifyOutcomeResult } from '@/lib/analytics/classify-outcome';
+import type { DateRange } from '@/lib/analytics/date-range';
 import { useDesignerSessions } from '@/lib/queries/designer-sessions';
 import type { Frame } from '@/lib/queries/prototypes';
 
@@ -66,6 +67,12 @@ export interface PlaybackDrawerProps {
    * reuse the same memoized array — no duplicate `classifyOutcome` work).
    */
   outcomes: ClassifyOutcomeResult[];
+  /**
+   * Plan 03.1-02 — current sidebar date filter (or null = «Всё время»).
+   * Forwarded into `useDesignerSessions` so the playback list mirrors the
+   * same time window the header tiles and sankey are reading.
+   */
+  dateRange?: DateRange;
 }
 
 export function PlaybackDrawer({
@@ -76,13 +83,16 @@ export function PlaybackDrawer({
   prototypeVersionId: _prototypeVersionId,
   frames,
   outcomes,
+  dateRange,
 }: PlaybackDrawerProps): JSX.Element {
   // Local Drawer state — re-mounts fresh on next open (D-64).
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [filter, setFilter] = useState<SessionFilter>('all');
 
   // Lazy fetch — sessions list only loads while the drawer is mounted.
-  const sessionsQuery = useDesignerSessions(studyId);
+  // The date filter is forwarded so the list narrows in lock-step with the
+  // report's header tiles when the designer picks a non-default preset.
+  const sessionsQuery = useDesignerSessions(studyId, dateRange);
   const sessions = sessionsQuery.data ?? [];
 
   return (
