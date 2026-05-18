@@ -98,6 +98,7 @@ function RunnerShellInner({
   onComplete,
 }: RunnerShellProps) {
   const storeRunToken = useRunnerStore((s) => s.currentRunToken);
+  const storeSessionId = useRunnerStore((s) => s.sessionId);
   const currentBlockIndex = useRunnerStore((s) => s.currentBlockIndex);
   const resumeJumpTarget = useRunnerStore((s) => s.resumeJumpTarget);
   const setSession = useRunnerStore((s) => s.setSession);
@@ -109,11 +110,29 @@ function RunnerShellInner({
   // Preview-mode synthetic token so the runner store still namespaces state.
   const effectiveRunToken = runToken ?? `preview:${blocks[0]?.id ?? 'empty'}`;
 
-  // Hydrate the store on mount / token-change. We rebuild this every time
-  // blocks changes (preview-mode mutations during builder edits would
-  // otherwise leave the store stale).
+  // Hydrate the store on mount / token-change / NEW-session-on-same-token.
+  //
+  // Debug session `events-ingest-regression` (2026-05-18) revealed a silent
+  // bug: when a respondent completed a test and re-opened the SAME /r/{token}
+  // URL, `storeRunToken === effectiveRunToken` so the old gate skipped
+  // setSession entirely — leaving `currentBlockIndex` pinned at the persisted
+  // thanks-block index from the previous run. RunnerShell rendered
+  // ThanksRunner immediately, `complete_session` fired, and the session was
+  // marked completed WITHOUT PrototypeRunner ever mounting (so no events, no
+  // prototype_version_pin). D-22 ("ALWAYS start at the welcome block
+  // regardless of resume") was de-facto broken because the invariant lives
+  // INSIDE setSession and setSession wasn't being called.
+  //
+  // Fix: also gate on the server-issued `sessionId`. Every fresh run gets a
+  // new sessionId from `create_session` RPC, so a mismatch between the
+  // store's sessionId and the new one is the canonical "this is a fresh
+  // run" trigger that re-hydrates the store (resets currentBlockIndex to 0).
   useEffect(() => {
-    if (storeRunToken !== effectiveRunToken || mode === 'preview') {
+    if (
+      storeRunToken !== effectiveRunToken ||
+      storeSessionId !== (sessionId ?? null) ||
+      mode === 'preview'
+    ) {
       setSession({
         runToken: effectiveRunToken,
         sessionId: sessionId ?? null,
@@ -121,7 +140,7 @@ function RunnerShellInner({
         existingAnswers: mode === 'live' ? (existingAnswers ?? []) : [],
       });
     }
-  }, [effectiveRunToken, mode, blocks.length]);
+  }, [effectiveRunToken, mode, blocks.length, sessionId]);
 
   const total = blocks.length;
   const currentBlock = blocks[currentBlockIndex] ?? blocks[0];
