@@ -30,6 +30,7 @@ import { useFrames, type Frame } from '@/lib/queries/prototypes';
 import { useBlockEvents, type BlockEventRow } from '@/lib/queries/block-events';
 import { classifyOutcome, type ClassifyOutcomeResult } from '@/lib/analytics/classify-outcome';
 import { quantile } from '@/lib/analytics/quantile';
+import { transitionGraph, type SankeyGraph } from '@/lib/analytics/transition-graph';
 import type { Block } from '@/lib/blocks/types';
 import { blockVisualOf } from '@/lib/blocks/visual';
 import { PrototypeReport } from './PrototypeReport';
@@ -132,6 +133,28 @@ export function ReportShell({ studyId }: ReportShellProps) {
   // finish_frame_ids, ни success_path. N ответов + Avg + Median остаются.
   const showOutcomeCounters = finishFrameIds.length > 0 || successPath.length > 0;
 
+  // Phase 3 (Plan 03-02) — sankey transition graph derived from same cached
+  // events. Mode toggle state lives here so re-renders of FocusedBlockCard
+  // don't reset the user's choice. `transitionGraph` is pure; useMemo deps
+  // are exactly the 5 inputs that influence the output (D-42 + D-40 + D-43).
+  const [sankeyMode, setSankeyMode] = useState<'first' | 'all'>('first');
+  const frameNames = useMemo(
+    () => new Map(frames.map((f) => [f.frame_id, f.name] as const)),
+    [frames],
+  );
+  const sankey = useMemo<SankeyGraph>(
+    () =>
+      transitionGraph(allEvents, {
+        mode: sankeyMode,
+        thresholdPercent: 5,
+        validSessionCount: outcomes.length,
+        finishFrameIds,
+        outcomes,
+        frameNames,
+      }),
+    [allEvents, sankeyMode, outcomes, finishFrameIds, frameNames],
+  );
+
   return (
     <div
       style={{
@@ -190,9 +213,11 @@ export function ReportShell({ studyId }: ReportShellProps) {
               medianTimeS={stats.medianTimeS}
               showOutcomeCounters={showOutcomeCounters}
               frames={frames}
-              goalFrameIds={finishFrameIds}
               startingFrameId={startingFrameId}
               studyId={studyId}
+              sankey={sankey}
+              sankeyMode={sankeyMode}
+              onSankeyModeChange={setSankeyMode}
             />
           )}
         </main>
@@ -213,9 +238,14 @@ interface FocusedBlockCardProps {
   /** D-35 — when false, Успешно/Сдались tiles are hidden (no goal & no success_path). */
   showOutcomeCounters: boolean;
   frames: Frame[];
-  goalFrameIds: string[];
   startingFrameId: string | undefined;
   studyId: string;
+  /** Plan 03-02 — pre-computed sankey graph from `transitionGraph(...)`. */
+  sankey: SankeyGraph;
+  /** D-42 mode — 'first' (DAG) / 'all' (cycles + self-loops visible). */
+  sankeyMode: 'first' | 'all';
+  /** Mode-change handler bubbled up from ModeToggle. */
+  onSankeyModeChange: (mode: 'first' | 'all') => void;
 }
 
 function FocusedBlockCard({
@@ -227,9 +257,11 @@ function FocusedBlockCard({
   medianTimeS,
   showOutcomeCounters,
   frames,
-  goalFrameIds,
   startingFrameId,
   studyId,
+  sankey,
+  sankeyMode,
+  onSankeyModeChange,
 }: FocusedBlockCardProps) {
   const visual = blockVisualOf(block.type);
   const ChipIcon = visual.icon;
@@ -350,8 +382,10 @@ function FocusedBlockCard({
         subtitle="Исследуйте, как пользователи перемещаются по экранам прототипа. Колесо или ⌘+скролл — зум, drag — пан."
       >
         <ReportSankey
+          sankey={sankey}
+          mode={sankeyMode}
+          onModeChange={onSankeyModeChange}
           frames={frames}
-          goalFrameIds={goalFrameIds}
           startingFrameId={startingFrameId}
         />
       </Section>
