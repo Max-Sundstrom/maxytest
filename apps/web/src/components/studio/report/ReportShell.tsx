@@ -50,6 +50,10 @@ import { StatRich } from './StatRich';
 const STORAGE_BUCKET = 'prototype-renders';
 const SIGNED_URL_TTL_SECONDS = 86_400;
 
+/** Stable empty-array reference for the `useFrames` data default — see
+ *  comment on the `frames` line below. */
+const EMPTY_FRAMES: Frame[] = [];
+
 export interface ReportShellProps {
   studyId: string;
 }
@@ -91,7 +95,11 @@ export function ReportShell({ studyId }: ReportShellProps) {
   );
   const startingFrameId = (prototypeBlock?.content as { starting_frame_id?: string } | undefined)
     ?.starting_frame_id;
-  const { data: frames = [] } = useFrames(pvId);
+  const { data: framesData } = useFrames(pvId);
+  // Stable default — inline `?? []` would mint a new array each render and
+  // cause every effect that has `frames` in its deps to re-fire infinitely
+  // (Maximum update depth exceeded — UAT 2026-05-18).
+  const frames = framesData ?? EMPTY_FRAMES;
 
   // Phase 3 (Plan 03-01) — real header aggregates driven by the
   // block-scoped event stream. `useBlockEvents` fires once per (pvId,
@@ -227,11 +235,11 @@ export function ReportShell({ studyId }: ReportShellProps) {
       aborted = true;
     };
     // Re-mint when the success_path changes OR the frame catalogue swaps.
-    // Length is the right dep because `frames` is content-hashed-immutable
-    // per CLAUDE.md "Prototype immutability after import" — a length change
-    // implies a re-import (new prototype_version_id) which is the only
-    // scenario where render paths shift.
-  }, [successPath, frames.length, frames]);
+    // We depend on `pvId` (stable string) + `frames.length` (primitive) +
+    // memoized `successPath` — NOT on the `frames` array reference, which
+    // would refire on every render that mints a new default and cause an
+    // infinite update loop (Maximum update depth — UAT 2026-05-18).
+  }, [successPath, pvId, frames.length]);
 
   return (
     <div

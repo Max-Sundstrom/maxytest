@@ -100,11 +100,15 @@ export function transitionGraph(
 
   for (const [sessionId, frameEnters] of bySession) {
     frameEnters.sort((a, b) => a.seq - b.seq);
-    const visited = new Set<string>();
+    const visitedEdges = new Set<string>();
+    const visitedFrames = new Set<string>();
+    let lastFrameInPath: string | undefined;
+
     for (let i = 1; i < frameEnters.length; i++) {
       const src = frameEnters[i - 1]!.frame_id;
       const tgt = frameEnters[i]!.frame_id;
       if (!src || !tgt) continue;
+      if (lastFrameInPath === undefined) lastFrameInPath = src;
 
       if (src === tgt) {
         // Self-loop (Back button returning to same frame, etc.).
@@ -115,17 +119,44 @@ export function transitionGraph(
         continue;
       }
 
-      const key = `${src}|${tgt}`;
       if (mode === 'first') {
-        if (visited.has(key)) continue;
-        visited.add(key);
+        // D-42 «первое прохождение» semantics + cross-session DAG guard
+        // (UAT 2026-05-18): once the respondent revisits a frame already
+        // seen earlier in the same session, that's a loop. Recording
+        // src→tgt would produce a back-edge in the aggregate graph and
+        // make d3-sankey throw `circular link`. The whole point of 'first'
+        // mode is «what the respondent saw on the first traversal» — stop
+        // tracking transitions for this session at that point.
+        visitedFrames.add(src);
+        if (visitedFrames.has(tgt)) {
+          break;
+        }
+        const key = `${src}|${tgt}`;
+        if (visitedEdges.has(key)) continue;
+        visitedEdges.add(key);
+        edgeCounts.set(key, (edgeCounts.get(key) ?? 0) + 1);
+        visitedFrames.add(tgt);
+        lastFrameInPath = tgt;
+      } else {
+        // 'all' mode — every transition counts. Multi-frame cycle handling
+        // is deferred (Phase 4 polish); designers see 'first' mode by
+        // default and won't hit the cycle path in steady state.
+        const key = `${src}|${tgt}`;
+        edgeCounts.set(key, (edgeCounts.get(key) ?? 0) + 1);
+        lastFrameInPath = tgt;
       }
-      edgeCounts.set(key, (edgeCounts.get(key) ?? 0) + 1);
     }
-    // Track last frame_enter per session for terminal-node edges (D-43).
-    const last = frameEnters[frameEnters.length - 1];
-    if (last && last.frame_id) {
-      lastFrameBySession.set(sessionId, last.frame_id);
+
+    // Terminal-node edges (D-43): point at the LAST frame in the truncated
+    // path, not the absolute last `frame_enter`. For a respondent who
+    // reached the goal and kept exploring, this means the success edge
+    // emanates from the goal frame, not from wherever they wandered next.
+    if (lastFrameInPath !== undefined) {
+      lastFrameBySession.set(sessionId, lastFrameInPath);
+    } else if (frameEnters.length > 0) {
+      // Single-frame session (or every pair was a self-loop).
+      const onlyFrame = frameEnters[0]!.frame_id;
+      if (onlyFrame) lastFrameBySession.set(sessionId, onlyFrame);
     }
   }
 

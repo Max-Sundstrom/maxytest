@@ -79,7 +79,7 @@ describe('transitionGraph', () => {
     expect(result.validSessionCount).toBe(0);
   });
 
-  it("mode='first' dedupes A→B→A→B to weight 1 (Pitfall 7)", () => {
+  it("mode='first' truncates at first revisit — A→B→A→B records only A→B (Pitfall 7 + DAG guard)", () => {
     const events: BlockEventRow[] = [
       ev({ id: 'e1', seq: 1, session_id: 's1', frame_id: 'A' }),
       ev({ id: 'e2', seq: 2, session_id: 's1', frame_id: 'B' }),
@@ -90,11 +90,13 @@ describe('transitionGraph', () => {
       events,
       opts({ mode: 'first', validSessionCount: 1, thresholdPercent: 0 }),
     );
-    // A→B weight 1, B→A weight 1.
+    // 'first' mode = «первое прохождение» semantic. Once B→A would create
+    // a back-edge (A already visited at seq 1), the path truncates.
+    // d3-sankey cannot render cyclic graphs (UAT 2026-05-18 regression).
     const ab = result.edges.find((e) => e.source === 'A' && e.target === 'B');
     const ba = result.edges.find((e) => e.source === 'B' && e.target === 'A');
     expect(ab?.value).toBe(1);
-    expect(ba?.value).toBe(1);
+    expect(ba).toBeUndefined();
   });
 
   it("mode='all' counts A→B→A→B as weight 2", () => {
