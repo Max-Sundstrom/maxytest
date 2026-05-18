@@ -29,6 +29,7 @@ import { useBlocks } from '@/lib/queries/blocks';
 import { useDesignerSessions } from '@/lib/queries/designer-sessions';
 import { useFrames, type Frame } from '@/lib/queries/prototypes';
 import { useBlockEvents, type BlockEventRow } from '@/lib/queries/block-events';
+import { useResponses } from '@/lib/queries/responses';
 import { classifyOutcome, type ClassifyOutcomeResult } from '@/lib/analytics/classify-outcome';
 import type { DatePreset, DateRange } from '@/lib/analytics/date-range';
 import {
@@ -48,6 +49,7 @@ import { PrototypeReport } from './PrototypeReport';
 import { ReportSankey } from './ReportSankey';
 import { ReportSidebar } from './ReportSidebar';
 import { ReportTopbar } from './ReportTopbar';
+import { ResponsesView } from './ResponsesView';
 import { StatRich } from './StatRich';
 
 // Plan 03-04 — signed-URL TTL for FunnelSection thumbnails. Mirrors
@@ -100,6 +102,14 @@ export function ReportShell({ studyId }: ReportShellProps) {
   // (D-64). PlaybackDrawer's local state (selectedSessionId, filter) is
   // intentionally unmounted on close so the next open starts fresh.
   const [playbackOpen, setPlaybackOpen] = useState(false);
+
+  // Plan 03.1-04 — view-mode toggle («Сводный отчёт / Ответы N»). State lives
+  // here so the sidebar PillTab pair is a controlled component and re-mounts
+  // of the canvas don't reset the user's selection. `selectedSessionId` is
+  // also lifted here so ResponsesView row-clicks can pre-select the drawer
+  // (controlled mode on PlaybackDrawer — see Task 3 §C).
+  const [viewMode, setViewMode] = useState<'aggregate' | 'responses'>('aggregate');
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
 
   // Default the sidebar's active row to the prototype block once blocks land.
   useEffect(() => {
@@ -196,6 +206,22 @@ export function ReportShell({ studyId }: ReportShellProps) {
     }
     return results;
   }, [filteredEvents, finishFrameIds]);
+
+  // Plan 03.1-04 — per-response rows for the «Ответы N» view-mode. Pure
+  // derivation over data already in scope (sessions + filteredEvents +
+  // outcomes); no new TanStack Query slot. The hook applies the «Тип»
+  // status filter at the row level, matching the dataset that drives the
+  // aggregate view, so the count next to the sidebar tab always equals the
+  // number of rows in the table when the user switches to it.
+  const responseRows = useResponses(
+    studyId,
+    dateRange,
+    statusFilter,
+    sessions,
+    filteredEvents,
+    outcomes,
+  );
+  const responsesCount = responseRows.length;
 
   // Header stats from outcomes. `responses` = valid sessions (D-39 — may
   // differ from sidebar's «Завершено» which counts every test session
@@ -366,6 +392,9 @@ export function ReportShell({ studyId }: ReportShellProps) {
           onDateChange={onDateChange}
           statusFilter={statusFilter}
           onStatusFilterChange={setStatusFilter}
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          responsesCount={responsesCount}
         />
 
         <main
@@ -383,7 +412,7 @@ export function ReportShell({ studyId }: ReportShellProps) {
             <SkeletonCard />
           ) : !prototypeBlock ? (
             <EmptyReportState />
-          ) : (
+          ) : viewMode === 'aggregate' ? (
             <FocusedBlockCard
               block={prototypeBlock}
               responses={stats.responses}
@@ -404,6 +433,17 @@ export function ReportShell({ studyId }: ReportShellProps) {
               validSessionCount={outcomes.length}
               onOpenPlayback={() => setPlaybackOpen(true)}
             />
+          ) : (
+            // Plan 03.1-04 — «Ответы N» view-mode. Clicking a row opens the
+            // PlaybackDrawer pre-selected to that session via the controlled-
+            // mode props on PlaybackDrawer (Task 3 §C).
+            <ResponsesView
+              rows={responseRows}
+              onRowClick={(id) => {
+                setSelectedSessionId(id);
+                setPlaybackOpen(true);
+              }}
+            />
           )}
         </main>
       </div>
@@ -422,6 +462,8 @@ export function ReportShell({ studyId }: ReportShellProps) {
           frames={frames}
           outcomes={outcomes}
           dateRange={dateRange}
+          selectedSessionId={selectedSessionId}
+          onSelectedSessionIdChange={setSelectedSessionId}
         />
       ) : null}
     </div>

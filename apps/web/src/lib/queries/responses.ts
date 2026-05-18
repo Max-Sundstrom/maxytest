@@ -281,7 +281,6 @@ export function useResponses(
     // `studyId` and `dateRange` are included to keep the memo key stable
     // across re-renders of the report shell — even though they're not read
     // inside, they let downstream call sites trust the memo's identity.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     studyId,
     dateRange?.startISO,

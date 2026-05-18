@@ -73,6 +73,16 @@ export interface PlaybackDrawerProps {
    * same time window the header tiles and sankey are reading.
    */
   dateRange?: DateRange;
+  /**
+   * Plan 03.1-04 — controlled selection mode. When defined, the drawer
+   * surfaces this as the selected session and reports changes via
+   * `onSelectedSessionIdChange`. When `undefined`, the drawer falls back to
+   * its original local-state behavior — preserves backward-compat with any
+   * fixture or future call site that wants the «pick on the inside»
+   * flow.
+   */
+  selectedSessionId?: string | null;
+  onSelectedSessionIdChange?: (id: string | null) => void;
 }
 
 export function PlaybackDrawer({
@@ -84,9 +94,22 @@ export function PlaybackDrawer({
   frames,
   outcomes,
   dateRange,
+  selectedSessionId: controlledSelectedSessionId,
+  onSelectedSessionIdChange,
 }: PlaybackDrawerProps): JSX.Element {
-  // Local Drawer state — re-mounts fresh on next open (D-64).
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  // Local Drawer state — re-mounts fresh on next open (D-64). Used when the
+  // controlled-mode prop is omitted (backward-compat).
+  const [internalSelectedSessionId, setInternalSelectedSessionId] = useState<string | null>(null);
+  const isControlled = controlledSelectedSessionId !== undefined;
+  const selectedSessionId = isControlled ? controlledSelectedSessionId : internalSelectedSessionId;
+  const setSelectedSessionId = (id: string | null) => {
+    // Always notify the controlled-mode parent if it provided a setter, AND
+    // update local state so the drawer renders correctly when running in
+    // uncontrolled mode too (no harm when controlled — the parent's next
+    // render reconciles).
+    onSelectedSessionIdChange?.(id);
+    setInternalSelectedSessionId(id);
+  };
   const [filter, setFilter] = useState<SessionFilter>('all');
 
   // Lazy fetch — sessions list only loads while the drawer is mounted.
