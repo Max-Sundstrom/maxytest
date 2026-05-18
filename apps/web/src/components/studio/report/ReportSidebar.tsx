@@ -18,7 +18,7 @@
  * counts from the response/session totals passed in as props.
  */
 
-import { Check, Settings, Share2 } from 'lucide-react';
+import { Check } from 'lucide-react';
 import type { Block } from '@/lib/blocks/types';
 import { blockVisualOf } from '@/lib/blocks/visual';
 
@@ -39,8 +39,6 @@ export function ReportSidebar({
   completedCount,
   incompleteCount,
 }: ReportSidebarProps) {
-  const totalCount = completedCount + incompleteCount;
-
   // Hide pinned welcome from the block-jump list (it's not analytically
   // interesting and the handoff sidebar lists "blocks 1..N" without welcome).
   const reportableBlocks = blocks.filter((b) => b.type !== 'welcome');
@@ -62,43 +60,10 @@ export function ReportSidebar({
         <SelectInput>Всё время</SelectInput>
       </Group>
 
-      <Group label="Источник респондентов">
-        <CheckRow
-          checked
-          icon={<Share2 size={12} strokeWidth={1.5} />}
-          label="Ссылка"
-          n={totalCount}
-        />
-        <CheckRow checked icon={<span style={dotStyle} />} label="Панель Pathway" n={0} muted />
-      </Group>
-
       <Group label="Тип">
         <CheckRow checked label="Завершённые" n={completedCount} />
         <CheckRow label="Неполные" n={incompleteCount} />
       </Group>
-
-      <button
-        type="button"
-        style={{
-          alignSelf: 'flex-start',
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 6,
-          padding: '6px 10px',
-          background: 'transparent',
-          border: 0,
-          borderRadius: 'var(--radius)',
-          color: 'var(--text-2)',
-          font: '500 13px var(--font-sans)',
-          cursor: 'pointer',
-          transition: 'background 120ms cubic-bezier(.2,.7,.3,1)',
-        }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-chip)')}
-        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-      >
-        <Settings size={13} strokeWidth={1.5} />
-        <span>Фильтры</span>
-      </button>
 
       <div
         style={{
@@ -324,11 +289,3 @@ function PillTab({ active, children }: { active?: boolean; children: React.React
     </button>
   );
 }
-
-const dotStyle: React.CSSProperties = {
-  width: 12,
-  height: 12,
-  borderRadius: '50%',
-  background: 'var(--color-accent-3)',
-  display: 'inline-block',
-};
