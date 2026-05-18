@@ -340,6 +340,39 @@
   }
 }
 
+/* ═══ Phase 03.1-05 — runner misclick ring fade-out ═════════════════════════
+ *
+ * Used by FrameLayer.tsx (apps/web/src/components/runner/blocks/
+ * PrototypeViewer/FrameLayer.tsx) to signal a tap outside any hotspot —
+ * a transient red ring at the tap coordinates, fading over 600ms.
+ *
+ * Geometry locked per CONTEXT.md GA4 / D-74: scale 1.0 → 1.4, opacity
+ * 0.8 → 0, 600ms, easing cubic-bezier(.2, .7, .3, 1) (= --ease-out).
+ * The 600ms duration intentionally exceeds the design-system 360ms cap —
+ * misclick visibility is the UX priority and the duration is locked in
+ * the phase context.
+ *
+ * The `translate(-50%, -50%)` baked into the keyframe centers the ring
+ * on its anchor point (the click coordinates passed via left + top on
+ * the consuming div). CSS animations override the static `transform`,
+ * so the keyframe MUST own the full transform property.
+ *
+ * The prefers-reduced-motion override below redefines the keyframe so
+ * both endpoints render a static dot (no scale, no fade). The consuming
+ * component still unmounts the ring after the same 600ms setTimeout.
+ */
+
+@keyframes misclick-ring-fadeout {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0.8;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.4);
+    opacity: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   @keyframes transition-frame-dissolve {
     from,
@@ -352,6 +385,13 @@
     100% {
       transform: scale(1);
       opacity: 0.6;
+    }
+  }
+  @keyframes misclick-ring-fadeout {
+    0%,
+    100% {
+      transform: translate(-50%, -50%) scale(1);
+      opacity: 0.8;
     }
   }
 }
