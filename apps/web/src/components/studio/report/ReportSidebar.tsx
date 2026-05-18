@@ -22,6 +22,7 @@ import { Check } from 'lucide-react';
 import type { Block } from '@/lib/blocks/types';
 import { blockVisualOf } from '@/lib/blocks/visual';
 import type { DatePreset, DateRange } from '@/lib/analytics/date-range';
+import type { StatusFilter } from '@/lib/analytics/session-filter';
 import { DateRangeControl } from './DateRangeControl';
 
 export interface ReportSidebarProps {
@@ -38,6 +39,10 @@ export interface ReportSidebarProps {
   datePreset: DatePreset;
   /** Plan 03.1-02 — fires when designer picks a different period. */
   onDateChange: (range: DateRange, preset: DatePreset) => void;
+  /** Plan 03.1-03 (GA2/D-72) — current «Тип» filter state. */
+  statusFilter: StatusFilter;
+  /** Plan 03.1-03 — fires when designer toggles a «Тип» checkbox. */
+  onStatusFilterChange: (next: StatusFilter) => void;
 }
 
 export function ReportSidebar({
@@ -49,6 +54,8 @@ export function ReportSidebar({
   dateRange,
   datePreset,
   onDateChange,
+  statusFilter,
+  onStatusFilterChange,
 }: ReportSidebarProps) {
   // Hide pinned welcome from the block-jump list (it's not analytically
   // interesting and the handoff sidebar lists "blocks 1..N" without welcome).
@@ -72,8 +79,22 @@ export function ReportSidebar({
       </Group>
 
       <Group label="Тип">
-        <CheckRow checked label="Завершённые" n={completedCount} />
-        <CheckRow label="Неполные" n={incompleteCount} />
+        <CheckRow
+          checked={statusFilter.completed}
+          label="Завершённые"
+          n={completedCount}
+          onClick={() =>
+            onStatusFilterChange({ ...statusFilter, completed: !statusFilter.completed })
+          }
+        />
+        <CheckRow
+          checked={statusFilter.incomplete}
+          label="Неполные"
+          n={incompleteCount}
+          onClick={() =>
+            onStatusFilterChange({ ...statusFilter, incomplete: !statusFilter.incomplete })
+          }
+        />
       </Group>
 
       <div
@@ -187,29 +208,27 @@ function CheckRow({
   label,
   n,
   muted,
+  onClick,
 }: {
   checked?: boolean;
   icon?: React.ReactNode;
   label: string;
   n: number;
   muted?: boolean;
+  /**
+   * Plan 03.1-03 — when provided, renders the row as an interactive
+   * `<button role="checkbox" aria-pressed={checked}>` so screen readers can
+   * announce state changes and keyboard users can toggle via Space/Enter.
+   * When omitted, falls back to the original read-only `<div>` rendering
+   * — kept for future call sites (the only previous consumer was deleted
+   * in Plan 03.1-01).
+   */
+  onClick?: () => void;
 }) {
-  return (
-    <div
-      style={{
-        height: 32,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 10,
-        padding: '0 10px',
-        background: 'var(--bg-card)',
-        border: '1px solid var(--border-1)',
-        borderRadius: 'var(--radius)',
-        font: '400 13.5px var(--font-sans)',
-        color: 'var(--text-1)',
-        opacity: muted ? 0.7 : 1,
-      }}
-    >
+  // Shared visual definition — only the wrapping element switches between
+  // `<button>` (interactive) and `<div>` (read-only).
+  const sharedChildren = (
+    <>
       <span
         aria-hidden="true"
         style={{
@@ -239,8 +258,44 @@ function CheckRow({
       >
         {n}
       </span>
-    </div>
+    </>
   );
+
+  const sharedStyle: React.CSSProperties = {
+    height: 32,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    padding: '0 10px',
+    background: 'var(--bg-card)',
+    border: '1px solid var(--border-1)',
+    borderRadius: 'var(--radius)',
+    font: '400 13.5px var(--font-sans)',
+    color: 'var(--text-1)',
+    opacity: muted ? 0.7 : 1,
+    width: '100%',
+    textAlign: 'left',
+  };
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        role="checkbox"
+        aria-pressed={!!checked}
+        aria-checked={!!checked}
+        onClick={onClick}
+        style={{
+          ...sharedStyle,
+          cursor: 'pointer',
+        }}
+      >
+        {sharedChildren}
+      </button>
+    );
+  }
+
+  return <div style={sharedStyle}>{sharedChildren}</div>;
 }
 
 function PillTab({ active, children }: { active?: boolean; children: React.ReactNode }) {
