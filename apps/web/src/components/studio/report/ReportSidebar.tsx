@@ -43,6 +43,12 @@ export interface ReportSidebarProps {
   statusFilter: StatusFilter;
   /** Plan 03.1-03 — fires when designer toggles a «Тип» checkbox. */
   onStatusFilterChange: (next: StatusFilter) => void;
+  /** Plan 03.1-04 — current view-mode ('aggregate' = summary report, 'responses' = per-session table). */
+  viewMode: 'aggregate' | 'responses';
+  /** Plan 03.1-04 — fires when designer clicks one of the PillTabs. */
+  onViewModeChange: (mode: 'aggregate' | 'responses') => void;
+  /** Plan 03.1-04 — count rendered next to the «Ответы N» tab label (live, filtered). */
+  responsesCount: number;
 }
 
 export function ReportSidebar({
@@ -56,6 +62,9 @@ export function ReportSidebar({
   onDateChange,
   statusFilter,
   onStatusFilterChange,
+  viewMode,
+  onViewModeChange,
+  responsesCount,
 }: ReportSidebarProps) {
   // Hide pinned welcome from the block-jump list (it's not analytically
   // interesting and the handoff sidebar lists "blocks 1..N" without welcome).
@@ -106,8 +115,12 @@ export function ReportSidebar({
           borderRadius: 'var(--radius)',
         }}
       >
-        <PillTab active>Сводный отчёт</PillTab>
-        <PillTab>Ответы {completedCount}</PillTab>
+        <PillTab active={viewMode === 'aggregate'} onClick={() => onViewModeChange('aggregate')}>
+          Сводный отчёт
+        </PillTab>
+        <PillTab active={viewMode === 'responses'} onClick={() => onViewModeChange('responses')}>
+          Ответы {responsesCount}
+        </PillTab>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -298,10 +311,22 @@ function CheckRow({
   return <div style={sharedStyle}>{sharedChildren}</div>;
 }
 
-function PillTab({ active, children }: { active?: boolean; children: React.ReactNode }) {
+function PillTab({
+  active,
+  onClick,
+  children,
+}: {
+  active?: boolean;
+  /** Plan 03.1-04 — forwarded to the underlying button so the tab is actually
+   *  interactive. Optional to keep the historical read-only call shape working
+   *  if a future consumer wants a non-interactive label. */
+  onClick?: () => void;
+  children: React.ReactNode;
+}) {
   return (
     <button
       type="button"
+      onClick={onClick}
       style={{
         flex: 1,
         height: 26,
