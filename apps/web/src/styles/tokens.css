@@ -304,3 +304,54 @@
   --duration-normal: 240ms;
   --duration-slow: 360ms;
 }
+
+/* ═══ Phase 3 — playback animations ═══════════════════════════════════════
+ *
+ * Defined for ClickRingPulse (apps/web/src/components/studio/report/
+ * ClickRingPulse.tsx) and PlaybackPlayer frame dissolves (Plan 03-06).
+ * Both keyframes have a `prefers-reduced-motion: reduce` override below
+ * that collapses them to a static frame — see 03-RESEARCH.md
+ * §"Anti-pattern 4" lines 794-810 for the WCAG rationale.
+ *
+ * Easing: cubic-bezier(.2, .7, .3, 1) (= --ease-out) — handoff-v1 motion
+ * easing. Duration 600ms for the click ring (matches Maze/Useberry visual
+ * cadence so designers cross-trained on those tools read the pulse
+ * naturally); duration is owned by the consuming component, not the
+ * keyframe itself.
+ */
+
+@keyframes transition-frame-dissolve {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes click-ring-pulse {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  @keyframes transition-frame-dissolve {
+    from,
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes click-ring-pulse {
+    0%,
+    100% {
+      transform: scale(1);
+      opacity: 0.6;
+    }
+  }
+}
