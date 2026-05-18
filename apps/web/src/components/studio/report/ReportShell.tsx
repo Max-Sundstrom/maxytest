@@ -432,6 +432,7 @@ export function ReportShell({ studyId }: ReportShellProps) {
               funnelSignedUrls={funnelSignedUrls}
               validSessionCount={outcomes.length}
               onOpenPlayback={() => setPlaybackOpen(true)}
+              dateRange={dateRange}
             />
           ) : (
             // Plan 03.1-04 — «Ответы N» view-mode. Clicking a row opens the
@@ -500,6 +501,11 @@ interface FocusedBlockCardProps {
   validSessionCount: number;
   /** Plan 03-06 — opens the PlaybackDrawer (D-64). */
   onOpenPlayback: () => void;
+  /**
+   * Plan 03.1-07 — forwarded from ReportShell so PrototypeReport's per-frame
+   * hooks narrow in lockstep with the rest of the report.
+   */
+  dateRange: DateRange;
 }
 
 function FocusedBlockCard({
@@ -521,6 +527,7 @@ function FocusedBlockCard({
   funnelSignedUrls,
   validSessionCount,
   onOpenPlayback,
+  dateRange,
 }: FocusedBlockCardProps) {
   const visual = blockVisualOf(block.type);
   const ChipIcon = visual.icon;
@@ -699,7 +706,7 @@ function FocusedBlockCard({
       {/* Heatmaps section — preserves existing Phase 2 surface */}
       <Section
         title="Тепловые карты и клики"
-        subtitle="Тепловые карты по экранам, клики по hotspot'ам, низкоконфиденсные fallback'ы. Phase 2 surface — без изменений."
+        subtitle="Тепловые карты по экранам, клики по hotspot'ам, низкоконфиденсные fallback'ы. Узкоэкранные стат-карточки реагируют на фильтр «Дата» (Plan 03.1-07)."
       >
         <div
           style={{
@@ -710,7 +717,8 @@ function FocusedBlockCard({
             overflow: 'auto',
           }}
         >
-          <PrototypeReport studyId={studyId} />
+          {/* Plan 03.1-07 — dateRange forwarded so per-frame heatmap + time-on-frame narrow with the «Дата» filter (closes VERIFICATION.md Gap #1 / ROADMAP SC1). */}
+          <PrototypeReport studyId={studyId} dateRange={dateRange} />
         </div>
       </Section>
     </article>

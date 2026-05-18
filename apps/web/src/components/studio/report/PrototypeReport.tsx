@@ -47,6 +47,7 @@ import { Heatmap } from '@/lib/heatmap/Heatmap';
 import { IndividualClicks } from '@/lib/heatmap/individual-clicks';
 import { supabase } from '@/lib/supabase/auth';
 import type { PrototypeContent } from '@/lib/blocks/schemas';
+import type { DateRange } from '@/lib/analytics/date-range';
 
 const STORAGE_BUCKET = 'prototype-renders';
 const SIGNED_URL_TTL_SECONDS = 86_400;
@@ -60,9 +61,17 @@ const NEAR_MISS_DISTANCE_CSS_PX = 44;
 
 export interface PrototypeReportProps {
   studyId: string;
+  /**
+   * Plan 03.1-07 — date-range filter forwarded from ReportShell. When
+   * non-null, all three event hooks (`useBlockEvents`, `useFrameEvents`,
+   * `useFrameStats`) narrow to events with
+   * `client_ts BETWEEN startISO AND endISO`. `null` / omitted disables the
+   * filter (matches the «Всё время» preset).
+   */
+  dateRange?: DateRange;
 }
 
-export function PrototypeReport({ studyId }: PrototypeReportProps) {
+export function PrototypeReport({ studyId, dateRange }: PrototypeReportProps) {
   // ---------------------------------------------------------------------------
   // 1. Find the (single) prototype block in this study.
   // ---------------------------------------------------------------------------
@@ -85,7 +94,14 @@ export function PrototypeReport({ studyId }: PrototypeReportProps) {
   }
 
   const pvId = (prototypeBlock.content as PrototypeContent).prototype_version_id;
-  return <PrototypeReportBody studyId={studyId} pvId={pvId} blockId={prototypeBlock.id} />;
+  return (
+    <PrototypeReportBody
+      studyId={studyId}
+      pvId={pvId}
+      blockId={prototypeBlock.id}
+      dateRange={dateRange}
+    />
+  );
 }
 
 /**
@@ -97,10 +113,12 @@ function PrototypeReportBody({
   studyId: _studyId,
   pvId,
   blockId,
+  dateRange,
 }: {
   studyId: string;
   pvId: string;
   blockId: string;
+  dateRange?: DateRange;
 }) {
   // ---------------------------------------------------------------------------
   // 2. Fetch prototype + frames + selected-frame data.
@@ -119,20 +137,28 @@ function PrototypeReportBody({
   const selectedFrameDbId = selectedFrame?.id;
 
   const { data: hotspots = [] } = useHotspots(selectedFrameDbId);
-  const { data: events = [] } = useFrameEvents(pvId, selectedFrameId, { eventType: 'tap' });
-  const { data: stats } = useFrameStats(pvId, selectedFrameId);
+  const { data: events = [] } = useFrameEvents(
+    pvId,
+    selectedFrameId,
+    { eventType: 'tap' },
+    dateRange,
+  );
+  const { data: stats } = useFrameStats(pvId, selectedFrameId, dateRange);
 
   // ---------------------------------------------------------------------------
   // Plan 03-03 — time-on-frame (median / P95 / N посещений).
   //
-  // Shares the Plan-03-01 `useBlockEvents` cache slot with ReportShell.tsx;
-  // TanStack Query dedups by identical queryKey, so this hook does NOT trigger
-  // a second round-trip when the user opens this card after the header tiles
-  // have already rendered. The pure `frameTimings` aggregator subtracts the
-  // 300 ms transition lockout per the Pitfall 4 pairing table (see
-  // frame-timings.ts header — Open Q1 RESOLVED 2026-05-18).
+  // Shares the Plan-03-01 `useBlockEvents` cache slot with ReportShell.tsx.
+  // Plan 03.1-07: now that both call sites forward the SAME `dateRange`, the
+  // two `useBlockEvents` queryKeys converge again and TanStack Query dedupes
+  // the round-trip (Plan 03.1-02 had introduced a key divergence by adding
+  // `dateRange` only at the ReportShell call site — this plan closes the
+  // resulting per-frame surface gap from VERIFICATION.md Gap #1).
+  // The pure `frameTimings` aggregator subtracts the 300 ms transition
+  // lockout per the Pitfall 4 pairing table (see frame-timings.ts header —
+  // Open Q1 RESOLVED 2026-05-18).
   // ---------------------------------------------------------------------------
-  const { data: allBlockEvents = [] } = useBlockEvents(pvId, blockId);
+  const { data: allBlockEvents = [] } = useBlockEvents(pvId, blockId, dateRange);
   const timings: FrameTimings = useMemo(
     () =>
       selectedFrameId
