@@ -14,10 +14,10 @@
  *       "Пути" section: <ReportSankey /> with pan/zoom
  *       "Тепловые карты и клики" section: embeds the existing <PrototypeReport />
  *
- * Stats / response counts are placeholders in this commit — Phase 3
- * (ANALYTICS-04) will plumb in the real session-aggregation queries. The
- * sankey is rendered against the real `useFrames` data with stub flow paths
- * (see ReportSankey notes).
+ * Stats / response counts are now driven by real session aggregates from
+ * `useBlockEvents` + `classifyOutcome` (Plan 03-01). Sankey, funnel,
+ * time-on-frame, playback drawer remain Plan 03-02..06 territory; this file
+ * is the canonical driver-hook call site for the whole report surface.
  *
  * Existing <PrototypeReport /> (heatmap + per-frame stats) is preserved as
  * the body of the "Тепловые карты и клики" section so Phase 2's analytics
@@ -27,6 +27,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useBlocks } from '@/lib/queries/blocks';
 import { useFrames, type Frame } from '@/lib/queries/prototypes';
+import { useBlockEvents, type BlockEventRow } from '@/lib/queries/block-events';
+import { classifyOutcome, type ClassifyOutcomeResult } from '@/lib/analytics/classify-outcome';
+import { quantile } from '@/lib/analytics/quantile';
 import type { Block } from '@/lib/blocks/types';
 import { blockVisualOf } from '@/lib/blocks/visual';
 import { PrototypeReport } from './PrototypeReport';
@@ -54,21 +57,6 @@ export function ReportShell({ studyId }: ReportShellProps) {
     }
   }, [prototypeBlock, activeBlockId]);
 
-  // TODO Phase 3 (ANALYTICS-04) — plumb real session aggregates here.
-  // Until then the visible numbers are placeholders so the layout reads
-  // accurately to the designer reviewing handoff fidelity. The placeholder
-  // values match ADDENDUM-v3 sample copy (95 ответов / Успешно 74 / Сдались
-  // 21 / 80.14s avg / 57.23s median).
-  const stats = {
-    responses: 95,
-    successCount: 74,
-    gaveUpCount: 21,
-    avgTimeS: '80.14',
-    medianTimeS: '57.23',
-    completedCount: 109,
-    incompleteCount: 1,
-  };
-
   const pvId = (prototypeBlock?.content as { prototype_version_id?: string } | undefined)
     ?.prototype_version_id;
   const finishFrameIds = useMemo(
@@ -77,9 +65,72 @@ export function ReportShell({ studyId }: ReportShellProps) {
         []) as string[],
     [prototypeBlock],
   );
+  const successPath = useMemo(
+    () =>
+      ((prototypeBlock?.content as { success_path?: string[] } | undefined)?.success_path ??
+        []) as string[],
+    [prototypeBlock],
+  );
   const startingFrameId = (prototypeBlock?.content as { starting_frame_id?: string } | undefined)
     ?.starting_frame_id;
   const { data: frames = [] } = useFrames(pvId);
+
+  // Phase 3 (Plan 03-01) — real header aggregates driven by the
+  // block-scoped event stream. `useBlockEvents` fires once per (pvId,
+  // blockId) tuple; downstream Plans 02/04/05/06 will read the same
+  // cached rows via TanStack Query, so this hook is the canonical
+  // analytics driver for the whole report.
+  const { data: allEvents = [] } = useBlockEvents(pvId, prototypeBlock?.id);
+
+  // Group events by session_id → classifyOutcome per session, filter
+  // invalid (D-34: sessions with zero frame_enter return null and are
+  // excluded from counters — Pitfall 5).
+  const outcomes = useMemo<ClassifyOutcomeResult[]>(() => {
+    const bySession = new Map<string, BlockEventRow[]>();
+    for (const e of allEvents) {
+      const list = bySession.get(e.session_id) ?? [];
+      list.push(e);
+      bySession.set(e.session_id, list);
+    }
+    const results: ClassifyOutcomeResult[] = [];
+    for (const evts of bySession.values()) {
+      const r = classifyOutcome(evts, finishFrameIds);
+      if (r !== null) results.push(r);
+    }
+    return results;
+  }, [allEvents, finishFrameIds]);
+
+  // Header stats from outcomes. `responses` = valid sessions (D-39 — may
+  // differ from sidebar's «Завершено» which counts every test session
+  // regardless of prototype block reach). Avg + Median time use the full
+  // duration distribution; `quantile` does linear interpolation on the
+  // already-sorted ascending array.
+  const stats = useMemo(() => {
+    const valid = outcomes.length;
+    const successCount = outcomes.filter((o) => o.outcome === 'success').length;
+    const durations = outcomes.map((o) => o.durationMs).sort((a, b) => a - b);
+    const avgMs =
+      durations.length === 0 ? 0 : durations.reduce((a, b) => a + b, 0) / durations.length;
+    const medianMs = quantile(durations, 0.5);
+    return {
+      responses: valid,
+      successCount,
+      gaveUpCount: valid - successCount,
+      avgTimeS: (avgMs / 1000).toFixed(2),
+      medianTimeS: (medianMs / 1000).toFixed(2),
+      // TODO Phase 4 / Plan 03-04 — replace with real funnel-step counts.
+      // Sidebar shows "Completed / Incomplete" derived from sessions table,
+      // not from block-scoped events. For Plan 03-01 we map responses to
+      // completedCount so the sidebar text stays sensible until Plan 03-04
+      // wires the real sessions list.
+      completedCount: valid,
+      incompleteCount: 0,
+    };
+  }, [outcomes]);
+
+  // D-35 — счётчики Успешно / Сдались скрываются, когда у блока нет ни
+  // finish_frame_ids, ни success_path. N ответов + Avg + Median остаются.
+  const showOutcomeCounters = finishFrameIds.length > 0 || successPath.length > 0;
 
   return (
     <div
@@ -137,6 +188,7 @@ export function ReportShell({ studyId }: ReportShellProps) {
               gaveUpCount={stats.gaveUpCount}
               avgTimeS={stats.avgTimeS}
               medianTimeS={stats.medianTimeS}
+              showOutcomeCounters={showOutcomeCounters}
               frames={frames}
               goalFrameIds={finishFrameIds}
               startingFrameId={startingFrameId}
@@ -158,6 +210,8 @@ interface FocusedBlockCardProps {
   gaveUpCount: number;
   avgTimeS: string;
   medianTimeS: string;
+  /** D-35 — when false, Успешно/Сдались tiles are hidden (no goal & no success_path). */
+  showOutcomeCounters: boolean;
   frames: Frame[];
   goalFrameIds: string[];
   startingFrameId: string | undefined;
@@ -171,6 +225,7 @@ function FocusedBlockCard({
   gaveUpCount,
   avgTimeS,
   medianTimeS,
+  showOutcomeCounters,
   frames,
   goalFrameIds,
   startingFrameId,
@@ -259,28 +314,32 @@ function FocusedBlockCard({
         </p>
       </div>
 
-      {/* Stat grid */}
+      {/* Stat grid — D-35: collapse to 2 columns when no goal & no success_path */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(4, 1fr)',
+          gridTemplateColumns: showOutcomeCounters ? 'repeat(4, 1fr)' : 'repeat(2, 1fr)',
           gap: 24,
           paddingBottom: 20,
           borderBottom: '1px dashed var(--border-1)',
         }}
       >
-        <StatRich
-          icon="user-check"
-          iconColor="var(--color-success)"
-          label="Успешно"
-          value={String(successCount)}
-        />
-        <StatRich
-          icon="user-x"
-          iconColor="var(--color-warning)"
-          label="Сдались"
-          value={String(gaveUpCount)}
-        />
+        {showOutcomeCounters && (
+          <>
+            <StatRich
+              icon="user-check"
+              iconColor="var(--color-success)"
+              label="Успешно"
+              value={String(successCount)}
+            />
+            <StatRich
+              icon="user-x"
+              iconColor="var(--color-warning)"
+              label="Сдались"
+              value={String(gaveUpCount)}
+            />
+          </>
+        )}
         <StatRich label="Среднее время" value={`${avgTimeS} с`} />
         <StatRich label="Медианное время" value={`${medianTimeS} с`} />
       </div>
