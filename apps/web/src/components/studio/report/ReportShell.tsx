@@ -31,13 +31,23 @@ import { useBlockEvents, type BlockEventRow } from '@/lib/queries/block-events';
 import { classifyOutcome, type ClassifyOutcomeResult } from '@/lib/analytics/classify-outcome';
 import { quantile } from '@/lib/analytics/quantile';
 import { transitionGraph, type SankeyGraph } from '@/lib/analytics/transition-graph';
+import { funnelSteps, type FunnelStep } from '@/lib/analytics/funnel-steps';
 import type { Block } from '@/lib/blocks/types';
 import { blockVisualOf } from '@/lib/blocks/visual';
+import { supabase } from '@/lib/supabase/auth';
+import { FunnelSection } from './FunnelSection';
 import { PrototypeReport } from './PrototypeReport';
 import { ReportSankey } from './ReportSankey';
 import { ReportSidebar } from './ReportSidebar';
 import { ReportTopbar } from './ReportTopbar';
 import { StatRich } from './StatRich';
+
+// Plan 03-04 — signed-URL TTL for FunnelSection thumbnails. Mirrors
+// PrototypeReport.tsx lines 51-52 (private `prototype-renders` bucket
+// pattern from Phase 2 B-04). 86 400 s = 24 h matches the heatmap aside
+// so a single page-view never needs a re-mint.
+const STORAGE_BUCKET = 'prototype-renders';
+const SIGNED_URL_TTL_SECONDS = 86_400;
 
 export interface ReportShellProps {
   studyId: string;
@@ -155,6 +165,67 @@ export function ReportShell({ studyId }: ReportShellProps) {
     [allEvents, sankeyMode, outcomes, finishFrameIds, frameNames],
   );
 
+  // Plan 03-04 — success-path funnel. Forgiving semantics (D-50); empty
+  // success_path → []  (D-53 — section will hide). Shares the same
+  // useBlockEvents cache slot as ReportShell's header tiles + the sankey,
+  // so this is a derived useMemo with zero additional network cost.
+  const funnel = useMemo<FunnelStep[]>(
+    () => funnelSteps(allEvents, successPath, outcomes.length),
+    [allEvents, successPath, outcomes.length],
+  );
+
+  // Plan 03-04 — signed URLs for FunnelSection thumbnails. Mirrors
+  // PrototypeReport.tsx lines 149-178 (designer-side mint against the
+  // PRIVATE `prototype-renders` bucket). We mint only the paths referenced
+  // by `success_path` so a long prototype doesn't pay for funnel-thumbnail
+  // signed-URLs it won't render. Known limitation (plan §known_limitations):
+  // when both this effect AND PrototypeReport mount we issue two parallel
+  // createSignedUrls calls for overlapping paths — benign, deferred to
+  // Phase 8 polish (lift signedUrls to ReportShell as the single owner).
+  const [funnelSignedUrls, setFunnelSignedUrls] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (successPath.length === 0 || frames.length === 0) {
+      setFunnelSignedUrls({});
+      return;
+    }
+    const framesById = new Map(frames.map((f) => [f.frame_id, f] as const));
+    const paths = Array.from(
+      new Set(
+        successPath
+          .flatMap((frameId) => {
+            const f = framesById.get(frameId);
+            return f ? [f.render_path_1x, f.render_path_2x] : [];
+          })
+          .filter(Boolean),
+      ),
+    );
+    if (paths.length === 0) return;
+
+    let aborted = false;
+    void supabase.storage
+      .from(STORAGE_BUCKET)
+      .createSignedUrls(paths, SIGNED_URL_TTL_SECONDS)
+      .then(({ data, error }) => {
+        if (aborted || error || !data) return;
+        const map: Record<string, string> = {};
+        for (const row of data) {
+          if (row.path && row.signedUrl) {
+            map[row.path] = row.signedUrl;
+          }
+        }
+        setFunnelSignedUrls(map);
+      });
+
+    return () => {
+      aborted = true;
+    };
+    // Re-mint when the success_path changes OR the frame catalogue swaps.
+    // Length is the right dep because `frames` is content-hashed-immutable
+    // per CLAUDE.md "Prototype immutability after import" — a length change
+    // implies a re-import (new prototype_version_id) which is the only
+    // scenario where render paths shift.
+  }, [successPath, frames.length, frames]);
+
   return (
     <div
       style={{
@@ -218,6 +289,10 @@ export function ReportShell({ studyId }: ReportShellProps) {
               sankey={sankey}
               sankeyMode={sankeyMode}
               onSankeyModeChange={setSankeyMode}
+              successPath={successPath}
+              funnel={funnel}
+              funnelSignedUrls={funnelSignedUrls}
+              validSessionCount={outcomes.length}
             />
           )}
         </main>
@@ -246,6 +321,14 @@ interface FocusedBlockCardProps {
   sankeyMode: 'first' | 'all';
   /** Mode-change handler bubbled up from ModeToggle. */
   onSankeyModeChange: (mode: 'first' | 'all') => void;
+  /** Plan 03-04 — designer-defined success path (D-53 guards on `length > 0`). */
+  successPath: string[];
+  /** Plan 03-04 — pre-computed funnel steps from `funnelSteps(...)`. */
+  funnel: FunnelStep[];
+  /** Plan 03-04 — signed URLs for the funnel-step thumbnails. */
+  funnelSignedUrls: Record<string, string>;
+  /** Plan 03-04 — denominator for the FunnelSection `N из Total` text. */
+  validSessionCount: number;
 }
 
 function FocusedBlockCard({
@@ -262,6 +345,10 @@ function FocusedBlockCard({
   sankey,
   sankeyMode,
   onSankeyModeChange,
+  successPath,
+  funnel,
+  funnelSignedUrls,
+  validSessionCount,
 }: FocusedBlockCardProps) {
   const visual = blockVisualOf(block.type);
   const ChipIcon = visual.icon;
@@ -389,6 +476,23 @@ function FocusedBlockCard({
           startingFrameId={startingFrameId}
         />
       </Section>
+
+      {/* Plan 03-04 — Success-path funnel (D-51 placement: between «Пути»
+          and «Тепловые карты и клики»). D-53 — section is hidden entirely
+          when no success_path is set. */}
+      {successPath.length > 0 && (
+        <Section
+          title="Целевой путь"
+          subtitle="Как респонденты проходят по шагам, которые ты задал в конструкторе. Семантика — Forgiving (любой порядок)."
+        >
+          <FunnelSection
+            steps={funnel}
+            frames={frames}
+            signedUrls={funnelSignedUrls}
+            validSessionCount={validSessionCount}
+          />
+        </Section>
+      )}
 
       {/* Heatmaps section — preserves existing Phase 2 surface */}
       <Section
