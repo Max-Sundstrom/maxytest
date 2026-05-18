@@ -1,5 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
-import { Outlet, createRootRoute } from '@tanstack/react-router';
+import { Outlet, createRootRoute, useLocation } from '@tanstack/react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/sonner';
 import { Button } from '@/components/ui/button';
@@ -65,13 +65,18 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, AppErrorBounda
 }
 
 function RootComponent() {
+  // Hide SkinPicker on the public runner route — respondents must not see
+  // a designer-side theme switcher (it implies the prototype is editable).
+  const { pathname } = useLocation();
+  const isRunner = pathname.startsWith('/r/');
+
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <AppErrorBoundary>
           <Outlet />
         </AppErrorBoundary>
-        <SkinPicker />
+        {isRunner ? null : <SkinPicker />}
         <Toaster richColors position="bottom-right" theme="light" />
       </TooltipProvider>
     </QueryClientProvider>
