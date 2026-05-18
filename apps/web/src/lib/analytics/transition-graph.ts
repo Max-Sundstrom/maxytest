@@ -232,10 +232,90 @@ export function transitionGraph(
     nodes.push({ id: 'OTHER', name: `Other · ${otherPathsCount} путей`, kind: 'other' });
   }
 
+  // Defense-in-depth (UAT 2026-05-18): final DAG guard. The 'first'-mode
+  // truncation above SHOULD produce a DAG for any session list, and 'all'
+  // mode is documented to not handle multi-frame cycles. But if either the
+  // base-edge pass OR the terminal-edge pass somehow inserts a back-edge
+  // (regression, weird data, edge-case we didn't model), d3-sankey crashes
+  // the whole report with `circular link`. We drop the lowest-weight
+  // back-edge greedily until the graph is acyclic.
+  const dagEdges = dropBackEdgesUntilDag(keptEdges);
+
   const selfLoops = Array.from(selfLoopCounts).map(([frameId, count]) => ({
     frameId,
     sessionsCount: count,
   }));
 
-  return { nodes, edges: keptEdges, selfLoops, otherPathsCount, validSessionCount };
+  return { nodes, edges: dagEdges, selfLoops, otherPathsCount, validSessionCount };
+}
+
+/**
+ * Greedy back-edge dropper — returns a subset of `edges` that forms a DAG.
+ *
+ * Kahn's algorithm: repeatedly peel off zero-in-degree nodes. Whatever
+ * remains in the in-degree map is part of a cycle. We pick the lowest-weight
+ * edge incident to those remaining nodes, drop it, and restart. Worst-case
+ * O(V·E) per drop × at most E drops = O(V·E²) — but our graphs are tiny
+ * (~10 nodes, ~15 edges) so the constant factor is dominated by the
+ * happy-path no-cycle pass.
+ *
+ * Self-loops (src === tgt) are not handled here — they're stored in a
+ * separate `selfLoops` array and rendered as overlay arcs (Pitfall 3).
+ */
+function dropBackEdgesUntilDag(edges: SankeyGraphEdge[]): SankeyGraphEdge[] {
+  // Filter out any accidental self-loops (defense-in-depth — they should
+  // never reach this point given the src===tgt check upstream).
+  const working = edges.filter((e) => e.source !== e.target).map((e) => ({ ...e }));
+
+  while (true) {
+    const nodes = new Set<string>();
+    for (const e of working) {
+      nodes.add(e.source);
+      nodes.add(e.target);
+    }
+    const inDeg = new Map<string, number>();
+    for (const n of nodes) inDeg.set(n, 0);
+    for (const e of working) inDeg.set(e.target, (inDeg.get(e.target) ?? 0) + 1);
+
+    const queue: string[] = [];
+    for (const [n, d] of inDeg) if (d === 0) queue.push(n);
+
+    let visited = 0;
+    const stillReachable = new Set<string>(queue);
+    while (queue.length > 0) {
+      const n = queue.shift()!;
+      visited += 1;
+      for (const e of working) {
+        if (e.source !== n) continue;
+        const next = (inDeg.get(e.target) ?? 0) - 1;
+        inDeg.set(e.target, next);
+        if (next === 0) {
+          queue.push(e.target);
+          stillReachable.add(e.target);
+        }
+      }
+    }
+
+    if (visited === nodes.size) return working;
+
+    // Find the lowest-weight edge among nodes that are still in a cycle
+    // (i.e. NOT in stillReachable). Drop it and retry.
+    const cycleNodes = new Set<string>();
+    for (const n of nodes) if (!stillReachable.has(n)) cycleNodes.add(n);
+
+    let weakest: { idx: number; value: number } | null = null;
+    for (let i = 0; i < working.length; i++) {
+      const e = working[i]!;
+      if (!cycleNodes.has(e.source) || !cycleNodes.has(e.target)) continue;
+      if (weakest === null || e.value < weakest.value) {
+        weakest = { idx: i, value: e.value };
+      }
+    }
+    if (weakest === null) {
+      // Shouldn't happen — cycleNodes is non-empty so at least one edge is
+      // incident on it. Bail out to avoid infinite loop.
+      return working;
+    }
+    working.splice(weakest.idx, 1);
+  }
 }
