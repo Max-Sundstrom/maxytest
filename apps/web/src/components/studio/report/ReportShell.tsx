@@ -26,10 +26,16 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useBlocks } from '@/lib/queries/blocks';
+import { useDesignerSessions } from '@/lib/queries/designer-sessions';
 import { useFrames, type Frame } from '@/lib/queries/prototypes';
 import { useBlockEvents, type BlockEventRow } from '@/lib/queries/block-events';
 import { classifyOutcome, type ClassifyOutcomeResult } from '@/lib/analytics/classify-outcome';
 import type { DatePreset, DateRange } from '@/lib/analytics/date-range';
+import {
+  classifyCompletion,
+  filterEventsByStatus,
+  type StatusFilter,
+} from '@/lib/analytics/session-filter';
 import { quantile } from '@/lib/analytics/quantile';
 import { transitionGraph, type SankeyGraph } from '@/lib/analytics/transition-graph';
 import { funnelSteps, type FunnelStep } from '@/lib/analytics/funnel-steps';
@@ -79,6 +85,16 @@ export function ReportShell({ studyId }: ReportShellProps) {
     setDatePreset(preset);
   }, []);
 
+  // Plan 03.1-03 (GA2 / D-72) — «Тип» (Завершённые / Неполные) filter state.
+  // Single source of truth for the whole report — the filter narrows
+  // `filteredEvents` (see below), which drives header tiles, sankey, funnel,
+  // and PlaybackDrawer in lockstep. Default matches the prior hardcoded
+  // sidebar mock: «Завершённые» checked, «Неполные» unchecked.
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>({
+    completed: true,
+    incomplete: false,
+  });
+
   // Plan 03-06 — drawer that closes ROADMAP SC5 (ANALYTICS-09). State lives
   // here so the «Смотреть сессии» CTA in FocusedBlockCard can toggle it
   // (D-64). PlaybackDrawer's local state (selectedSessionId, filter) is
@@ -121,10 +137,23 @@ export function ReportShell({ studyId }: ReportShellProps) {
   // analytics driver for the whole report.
   const { data: allEvents = [] } = useBlockEvents(pvId, prototypeBlock?.id, dateRange);
 
-  // Group events by session_id → classifyOutcome per session, filter
-  // invalid (D-34: sessions with zero frame_enter return null and are
-  // excluded from counters — Pitfall 5).
-  const outcomes = useMemo<ClassifyOutcomeResult[]>(() => {
+  // Plan 03.1-03 — sessions query feeds the «Тип» (Завершённые / Неполные)
+  // classifier via the `sessions.status` column (CONTEXT.md GA2 / D-72
+  // condition 1). Same dateRange threading as PlaybackDrawer so both views
+  // narrow in lockstep.
+  const { data: sessions = [] } = useDesignerSessions(studyId, dateRange);
+  const sessionsById = useMemo(() => new Map(sessions.map((s) => [s.id, s] as const)), [sessions]);
+
+  // ── B2 ordering lock (Plan 03.1-03) — non-negotiable memo chain. ───────
+  //
+  // outcomesAll → derived from UNFILTERED `allEvents` so the classifier
+  // sees each session's COMPLETE event timeline. Applying the status filter
+  // BEFORE computing outcomes would corrupt per-session success/giveup
+  // classification (events from sessions excluded by an incomplete-only
+  // filter would never get to contribute to a sibling session's outcome
+  // and vice versa). outcomesAll is therefore filter-UNAWARE and is the
+  // canonical input to filterEventsByStatus condition 3.
+  const outcomesAll = useMemo<ClassifyOutcomeResult[]>(() => {
     const bySession = new Map<string, BlockEventRow[]>();
     for (const e of allEvents) {
       const list = bySession.get(e.session_id) ?? [];
@@ -138,6 +167,35 @@ export function ReportShell({ studyId }: ReportShellProps) {
     }
     return results;
   }, [allEvents, finishFrameIds]);
+
+  // filteredEvents → narrow `allEvents` to the sessions whose classification
+  // is permitted by `statusFilter`. Inputs are exactly (allEvents,
+  // sessionsById, outcomesAll, statusFilter) — see session-filter.ts
+  // header for the three OR conditions per CONTEXT.md GA2 / D-72.
+  const filteredEvents = useMemo(
+    () => filterEventsByStatus(allEvents, sessionsById, outcomesAll, statusFilter),
+    [allEvents, sessionsById, outcomesAll, statusFilter],
+  );
+
+  // outcomes → filter-AWARE classification, derived from `filteredEvents`.
+  // This is the variable that the rest of ReportShell consumes (header
+  // tiles, sankey, funnel, PlaybackDrawer). Existing call sites stay
+  // stable — only the derivation input flips from `allEvents` to
+  // `filteredEvents`.
+  const outcomes = useMemo<ClassifyOutcomeResult[]>(() => {
+    const bySession = new Map<string, BlockEventRow[]>();
+    for (const e of filteredEvents) {
+      const list = bySession.get(e.session_id) ?? [];
+      list.push(e);
+      bySession.set(e.session_id, list);
+    }
+    const results: ClassifyOutcomeResult[] = [];
+    for (const evts of bySession.values()) {
+      const r = classifyOutcome(evts, finishFrameIds);
+      if (r !== null) results.push(r);
+    }
+    return results;
+  }, [filteredEvents, finishFrameIds]);
 
   // Header stats from outcomes. `responses` = valid sessions (D-39 — may
   // differ from sidebar's «Завершено» which counts every test session
@@ -157,15 +215,31 @@ export function ReportShell({ studyId }: ReportShellProps) {
       gaveUpCount: valid - successCount,
       avgTimeS: (avgMs / 1000).toFixed(2),
       medianTimeS: (medianMs / 1000).toFixed(2),
-      // TODO Phase 4 / Plan 03-04 — replace with real funnel-step counts.
-      // Sidebar shows "Completed / Incomplete" derived from sessions table,
-      // not from block-scoped events. For Plan 03-01 we map responses to
-      // completedCount so the sidebar text stays sensible until Plan 03-04
-      // wires the real sessions list.
-      completedCount: valid,
-      incompleteCount: 0,
     };
   }, [outcomes]);
+
+  // Plan 03.1-03 — sidebar «Тип» counts are filter-UNAWARE labels next to
+  // the checkboxes. They reflect the absolute population of «Завершённые»
+  // vs «Неполные» in the current date-range / event window so the designer
+  // can tell at a glance how much each toggle would reveal. The numbers
+  // are derived from the same union of sources as the classifier itself:
+  // sessionsById (covers sessions with no events at all) ∪ outcomesAll
+  // (covers sessions that only exist as event rows) ∪ task_finish event
+  // session_ids (covers the race window).
+  const sidebarCounts = useMemo(() => {
+    const sessionIds = new Set<string>();
+    for (const id of sessionsById.keys()) sessionIds.add(id);
+    for (const o of outcomesAll) sessionIds.add(o.sessionId);
+    for (const e of allEvents) sessionIds.add(e.session_id);
+    let completed = 0;
+    let incomplete = 0;
+    for (const id of sessionIds) {
+      const kind = classifyCompletion(id, sessionsById, allEvents, outcomesAll);
+      if (kind === 'completed') completed += 1;
+      else incomplete += 1;
+    }
+    return { completed, incomplete };
+  }, [sessionsById, outcomesAll, allEvents]);
 
   // D-35 — счётчики Успешно / Сдались скрываются, когда у блока нет ни
   // finish_frame_ids, ни success_path. N ответов + Avg + Median остаются.
@@ -182,7 +256,7 @@ export function ReportShell({ studyId }: ReportShellProps) {
   );
   const sankey = useMemo<SankeyGraph>(
     () =>
-      transitionGraph(allEvents, {
+      transitionGraph(filteredEvents, {
         mode: sankeyMode,
         thresholdPercent: 5,
         validSessionCount: outcomes.length,
@@ -190,16 +264,18 @@ export function ReportShell({ studyId }: ReportShellProps) {
         outcomes,
         frameNames,
       }),
-    [allEvents, sankeyMode, outcomes, finishFrameIds, frameNames],
+    [filteredEvents, sankeyMode, outcomes, finishFrameIds, frameNames],
   );
 
   // Plan 03-04 — success-path funnel. Forgiving semantics (D-50); empty
   // success_path → []  (D-53 — section will hide). Shares the same
   // useBlockEvents cache slot as ReportShell's header tiles + the sankey,
   // so this is a derived useMemo with zero additional network cost.
+  // Plan 03.1-03 — input is `filteredEvents` so funnel narrows in lockstep
+  // with the «Тип» filter.
   const funnel = useMemo<FunnelStep[]>(
-    () => funnelSteps(allEvents, successPath, outcomes.length),
-    [allEvents, successPath, outcomes.length],
+    () => funnelSteps(filteredEvents, successPath, outcomes.length),
+    [filteredEvents, successPath, outcomes.length],
   );
 
   // Plan 03-04 — signed URLs for FunnelSection thumbnails. Mirrors
@@ -283,11 +359,13 @@ export function ReportShell({ studyId }: ReportShellProps) {
           blocks={blocks}
           activeBlockId={activeBlockId}
           onSelectBlock={setActiveBlockId}
-          completedCount={stats.completedCount}
-          incompleteCount={stats.incompleteCount}
+          completedCount={sidebarCounts.completed}
+          incompleteCount={sidebarCounts.incomplete}
           dateRange={dateRange}
           datePreset={datePreset}
           onDateChange={onDateChange}
+          statusFilter={statusFilter}
+          onStatusFilterChange={setStatusFilter}
         />
 
         <main
