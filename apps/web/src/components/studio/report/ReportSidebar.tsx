@@ -21,6 +21,8 @@
 import { Check } from 'lucide-react';
 import type { Block } from '@/lib/blocks/types';
 import { blockVisualOf } from '@/lib/blocks/visual';
+import type { DatePreset, DateRange } from '@/lib/analytics/date-range';
+import { DateRangeControl } from './DateRangeControl';
 
 export interface ReportSidebarProps {
   blocks: Block[];
@@ -30,6 +32,12 @@ export interface ReportSidebarProps {
   onSelectBlock: (blockId: string) => void;
   completedCount: number;
   incompleteCount: number;
+  /** Plan 03.1-02 — current date filter ({startISO,endISO} | null). */
+  dateRange: DateRange;
+  /** Plan 03.1-02 — current preset key (drives the trigger label). */
+  datePreset: DatePreset;
+  /** Plan 03.1-02 — fires when designer picks a different period. */
+  onDateChange: (range: DateRange, preset: DatePreset) => void;
 }
 
 export function ReportSidebar({
@@ -38,6 +46,9 @@ export function ReportSidebar({
   onSelectBlock,
   completedCount,
   incompleteCount,
+  dateRange,
+  datePreset,
+  onDateChange,
 }: ReportSidebarProps) {
   // Hide pinned welcome from the block-jump list (it's not analytically
   // interesting and the handoff sidebar lists "blocks 1..N" without welcome).
@@ -57,7 +68,7 @@ export function ReportSidebar({
       }}
     >
       <Group label="Дата">
-        <SelectInput>Всё время</SelectInput>
+        <DateRangeControl value={dateRange} preset={datePreset} onChange={onDateChange} />
       </Group>
 
       <Group label="Тип">
@@ -166,41 +177,6 @@ function Group({ label, children }: { label: string; children: React.ReactNode }
         {label}
       </span>
       {children}
-    </div>
-  );
-}
-
-function SelectInput({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      style={{
-        height: 32,
-        padding: '0 12px',
-        background: 'var(--bg-input)',
-        border: '1px solid var(--border-1)',
-        borderRadius: 'var(--radius)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        font: '400 13.5px var(--font-sans)',
-        color: 'var(--text-1)',
-        cursor: 'pointer',
-      }}
-    >
-      <span>{children}</span>
-      <svg
-        width="12"
-        height="12"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
-      >
-        <path d="M6 9l6 6 6-6" />
-      </svg>
     </div>
   );
 }

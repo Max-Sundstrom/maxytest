@@ -32,6 +32,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 
+import type { DateRange } from '@/lib/analytics/date-range';
 import { supabase } from '@/lib/supabase/auth';
 
 /**
@@ -60,23 +61,40 @@ export interface BlockEventRow {
  *
  * @param prototypeVersionId — `prototype_versions.id` (UUID) the study points at.
  * @param blockId            — `blocks.id` (UUID) of the prototype block.
+ * @param dateRange          — Plan 03.1-02 (GA1/D-71). When non-null, narrows the
+ *                              query to `client_ts BETWEEN startISO AND endISO`.
+ *                              `null` (or omitted) disables the filter and returns
+ *                              the full row set the RLS policy allows.
+ *                              The tuple itself is part of the queryKey so each
+ *                              window gets its own TanStack Query cache slot.
  */
 export function useBlockEvents(
   prototypeVersionId: string | null | undefined,
   blockId: string | null | undefined,
+  dateRange?: DateRange,
 ) {
   return useQuery({
-    queryKey: ['block-events', prototypeVersionId, blockId] as const,
+    queryKey: [
+      'block-events',
+      prototypeVersionId,
+      blockId,
+      dateRange?.startISO ?? null,
+      dateRange?.endISO ?? null,
+    ] as const,
     enabled: !!prototypeVersionId && !!blockId,
     staleTime: 30_000,
     queryFn: async (): Promise<BlockEventRow[]> => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('events')
         .select(
           'id, x, y, hotspot_id, hit_target_id, event_type, seq, session_id, client_ts, frame_id',
         )
         .eq('prototype_version_id', prototypeVersionId!)
         .eq('block_id', blockId!);
+      if (dateRange) {
+        query = query.gte('client_ts', dateRange.startISO).lte('client_ts', dateRange.endISO);
+      }
+      const { data, error } = await query;
       if (error) throw error;
       return (data as BlockEventRow[]) ?? [];
     },
