@@ -33,6 +33,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useBlocks } from '@/lib/queries/blocks';
+import { useBlockEvents } from '@/lib/queries/block-events';
 import { useFrameEvents, useFrameStats, type FrameEventRow } from '@/lib/queries/events-designer';
 import {
   useFrames,
@@ -41,6 +42,7 @@ import {
   type Frame,
   type Hotspot,
 } from '@/lib/queries/prototypes';
+import { frameTimings, type FrameTimings } from '@/lib/analytics/frame-timings';
 import { Heatmap } from '@/lib/heatmap/Heatmap';
 import { IndividualClicks } from '@/lib/heatmap/individual-clicks';
 import { supabase } from '@/lib/supabase/auth';
@@ -83,7 +85,7 @@ export function PrototypeReport({ studyId }: PrototypeReportProps) {
   }
 
   const pvId = (prototypeBlock.content as PrototypeContent).prototype_version_id;
-  return <PrototypeReportBody studyId={studyId} pvId={pvId} />;
+  return <PrototypeReportBody studyId={studyId} pvId={pvId} blockId={prototypeBlock.id} />;
 }
 
 /**
@@ -91,7 +93,15 @@ export function PrototypeReport({ studyId }: PrototypeReportProps) {
  * resolved `pvId`) don't have to live behind a conditional in the parent —
  * React's rules-of-hooks demand a stable call shape.
  */
-function PrototypeReportBody({ studyId: _studyId, pvId }: { studyId: string; pvId: string }) {
+function PrototypeReportBody({
+  studyId: _studyId,
+  pvId,
+  blockId,
+}: {
+  studyId: string;
+  pvId: string;
+  blockId: string;
+}) {
   // ---------------------------------------------------------------------------
   // 2. Fetch prototype + frames + selected-frame data.
   // ---------------------------------------------------------------------------
@@ -111,6 +121,25 @@ function PrototypeReportBody({ studyId: _studyId, pvId }: { studyId: string; pvI
   const { data: hotspots = [] } = useHotspots(selectedFrameDbId);
   const { data: events = [] } = useFrameEvents(pvId, selectedFrameId, { eventType: 'tap' });
   const { data: stats } = useFrameStats(pvId, selectedFrameId);
+
+  // ---------------------------------------------------------------------------
+  // Plan 03-03 — time-on-frame (median / P95 / N посещений).
+  //
+  // Shares the Plan-03-01 `useBlockEvents` cache slot with ReportShell.tsx;
+  // TanStack Query dedups by identical queryKey, so this hook does NOT trigger
+  // a second round-trip when the user opens this card after the header tiles
+  // have already rendered. The pure `frameTimings` aggregator subtracts the
+  // 300 ms transition lockout per the Pitfall 4 pairing table (see
+  // frame-timings.ts header — Open Q1 RESOLVED 2026-05-18).
+  // ---------------------------------------------------------------------------
+  const { data: allBlockEvents = [] } = useBlockEvents(pvId, blockId);
+  const timings: FrameTimings = useMemo(
+    () =>
+      selectedFrameId
+        ? frameTimings(allBlockEvents, selectedFrameId)
+        : { median_ms: 0, p95_ms: 0, sample_size: 0 },
+    [allBlockEvents, selectedFrameId],
+  );
 
   // ---------------------------------------------------------------------------
   // 3. B-04 — designer-side signed URLs for the PRIVATE bucket.
@@ -372,6 +401,21 @@ function PrototypeReportBody({ studyId: _studyId, pvId }: { studyId: string; pvI
               <p className="text-muted-foreground">
                 Hotspots cover {(hotspotAreaFraction * 100).toFixed(0)}% of frame area.
               </p>
+              {timings.sample_size > 0 ? (
+                <>
+                  <p>
+                    Медианное время: <strong>{(timings.median_ms / 1000).toFixed(1)} с</strong>
+                  </p>
+                  <p>
+                    P95: <strong>{(timings.p95_ms / 1000).toFixed(1)} с</strong>
+                  </p>
+                  <p>
+                    N посещений: <strong>{timings.sample_size}</strong>
+                  </p>
+                </>
+              ) : (
+                <p className="text-muted-foreground">Время на фрейме: нет данных</p>
+              )}
             </div>
           </aside>
         </section>
