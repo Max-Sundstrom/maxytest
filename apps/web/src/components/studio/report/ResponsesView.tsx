@@ -15,10 +15,15 @@
  * Visual conventions:
  *   - Card-wrapped table (rounded var(--radius), border var(--border-1)).
  *   - Zebra striping: even rows on var(--bg-card), odd rows transparent.
- *   - Hex literals forbidden except the one documented exception in the chip
- *     foreground (no `--text-on-success` token in tokens.css — open TODO for
- *     Phase 4).
+ *   - Hex literals forbidden — outcome chip foreground uses
+ *     `var(--text-on-success)` (Phase 4 token added in Plan 04-04 Task 7).
  *   - Icons: lucide-react `Smartphone`, `Monitor`, `HelpCircle`, `Play`.
+ *
+ * Phase 4 D-98 — column 4 «Ответы» now renders a vertical stack of compact
+ * one-liners (one per non-skipped non-welcome/thanks block in the test) per
+ * the `row.blockLines[]` driver from `lib/queries/responses.ts`. Skipped
+ * blocks contribute NO line (the gap conveys the same info — em-dash NOT
+ * rendered). Lines truncate via CSS `text-overflow: ellipsis` at 360px.
  *
  * Accessibility:
  *   - Each row is `tabIndex={0}` with keyboard Enter/Space handling.
@@ -200,16 +205,37 @@ function Row({ row, zebra, onRowClick }: RowProps): JSX.Element {
       <td style={{ padding: '10px 12px' }}>
         <OutcomeChip outcome={row.outcome} />
       </td>
-      <td
-        style={{
-          padding: '10px 12px',
-          color: row.prototypeSummary ? 'var(--text-1)' : 'var(--text-3)',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {formatPrototypeSummary(row)}
+      <td style={{ padding: '10px 12px' }}>
+        {row.blockLines.length > 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {row.blockLines.map((line) => (
+              <span
+                key={line.blockId}
+                style={{
+                  font: '400 13px/20px var(--font-sans)',
+                  color: 'var(--text-2)',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  maxWidth: 360,
+                  display: 'block',
+                  // T-04-04-01 — React text node, NO dangerouslySetInnerHTML.
+                }}
+              >
+                {line.line}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <span
+            style={{
+              color: 'var(--text-3)',
+              font: '400 13px var(--font-sans)',
+            }}
+          >
+            Нет ответов
+          </span>
+        )}
       </td>
       <td style={{ padding: '6px 12px', textAlign: 'right' }}>
         <PlaybackButton
@@ -253,9 +279,9 @@ function OutcomeChip({ outcome }: { outcome: ResponseOutcome }): JSX.Element {
           padding: '0 8px',
           borderRadius: 'var(--radius)',
           background: 'var(--color-success)',
-          // TODO Phase 4: introduce --text-on-success token. The single-hex
-          // exception is documented in the file header.
-          color: '#fff',
+          // Phase 4 Plan 04-04 Task 7 — `--text-on-success` token added to
+          // tokens.css; replaces the historical `#fff` hex exception.
+          color: 'var(--text-on-success)',
           font: '500 12px var(--font-sans)',
         }}
       >
@@ -357,14 +383,8 @@ function formatStartedAt(iso: string): string {
   }
 }
 
-function formatPrototypeSummary(row: ResponseRow): string {
-  if (!row.prototypeSummary) return '—';
-  const { framesVisited, durationMs } = row.prototypeSummary;
-  // Simple 2-form pluralization: «1 фрейм» / «N фреймов». Full Russian
-  // pluralization («2 фрейма» / «5 фреймов») is deferred to Phase 4 — the
-  // 2-form approach catches the singular vs plural distinction and reads
-  // naturally for the common N ≠ 1 case.
-  const framesWord = framesVisited === 1 ? 'фрейм' : 'фреймов';
-  const minutes = (durationMs / 60_000).toFixed(1);
-  return `«${framesVisited} ${framesWord} · ${minutes} мин»`;
-}
+// `formatPrototypeSummary` removed in Plan 04-04 — its job is now done by
+// the `summarizeBlockAnswer` helper in `lib/queries/responses.ts` (prototype
+// case) which feeds into `row.blockLines[]`. The vertical-stack renderer
+// above iterates blockLines directly, so a dedicated formatter is no longer
+// needed.
