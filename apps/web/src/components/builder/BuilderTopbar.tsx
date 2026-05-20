@@ -23,7 +23,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { Eye, GitBranch, ListChecks, Settings } from 'lucide-react';
+import { Copy, Eye, GitBranch, ListChecks, MoreVertical, Settings } from 'lucide-react';
 import { toast } from 'sonner';
 import { MLogo } from '@/components/shared/MLogo';
 import { UserAvatarMenu } from '@/components/shared/UserAvatarMenu';
@@ -46,6 +46,7 @@ import {
 import { Button } from '@/components/ui/button';
 import {
   useArchiveStudy,
+  useDuplicateStudy,
   useMoveStudyToDraft,
   usePublishStudy,
   useRestoreStudy,
@@ -78,6 +79,10 @@ export function BuilderTopbar({
   const moveToDraft = useMoveStudyToDraft();
   const archive = useArchiveStudy();
   const restore = useRestoreStudy();
+  // Plan 04-05 Task 7 — «Дублировать» from the builder kebab menu.
+  // Secondary entry-point (the primary is /studies row dropdown). Same
+  // hook, same RPC, same idempotency-key generation.
+  const duplicate = useDuplicateStudy();
 
   const setPreviewOverlayOpen = useUiStore((s) => s.setPreviewOverlayOpen);
   const navigate = useNavigate() as unknown as LooseNavigate;
@@ -102,6 +107,16 @@ export function BuilderTopbar({
         },
       },
     );
+  };
+
+  const handleDuplicate = async () => {
+    try {
+      const newId = await duplicate.mutateAsync({ studyId });
+      navigate({ to: '/studies/$id/edit', params: { id: newId } });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Неизвестная ошибка';
+      toast.error('Не удалось дублировать тест', { description: message });
+    }
   };
 
   const handleCopyLink = async () => {
@@ -192,6 +207,11 @@ export function BuilderTopbar({
           <IconBtn aria-label="Превью" onClick={() => setPreviewOverlayOpen(true)}>
             <Eye size={16} strokeWidth={1.5} />
           </IconBtn>
+          {/* Plan 04-05 Task 7 — secondary entry for «Дублировать». Primary
+              entry is /studies row dropdown (see TestRow.tsx). Both call the
+              same useDuplicateStudy hook, so idempotency dedup holds across
+              entry-points if the designer somehow triggers both rapidly. */}
+          <BuilderKebab onDuplicate={handleDuplicate} duplicateBusy={duplicate.isPending} />
           {/* 12px spacer before the high-emphasis cluster so the Publish pill
               and avatar feel intentional, not crammed against the icon row. */}
           <span aria-hidden="true" style={{ width: 4 }} />
@@ -519,6 +539,68 @@ function IconBtn({ on, children, onClick, ...props }: IconBtnProps) {
     >
       {children}
     </button>
+  );
+}
+
+// ─── BuilderKebab (Plan 04-05) ───────────────────────────────────────────
+
+interface BuilderKebabProps {
+  onDuplicate: () => void | Promise<void>;
+  duplicateBusy: boolean;
+}
+
+/**
+ * Secondary action menu for the builder topbar. Currently hosts only
+ * «Дублировать» — Phase 6+ extensions (export schema, archive shortcut,
+ * etc.) drop into the same DropdownMenuContent.
+ *
+ * Trigger: 32×32 IconBtn with MoreVertical (lucide). Matches the kebab in
+ * TestRow (/studies hover-menu) so designers see the same affordance in
+ * both surfaces.
+ */
+function BuilderKebab({ onDuplicate, duplicateBusy }: BuilderKebabProps) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        aria-label="Дополнительные действия"
+        style={{
+          width: 32,
+          height: 32,
+          display: 'grid',
+          placeItems: 'center',
+          background: 'transparent',
+          border: 0,
+          borderRadius: 'var(--radius)',
+          color: 'var(--text-2)',
+          cursor: 'pointer',
+          transition: 'background 120ms cubic-bezier(.2,.7,.3,1)',
+        }}
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLElement).style.background = 'var(--bg-chip)';
+          (e.currentTarget as HTMLElement).style.color = 'var(--text-1)';
+        }}
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLElement).style.background = 'transparent';
+          (e.currentTarget as HTMLElement).style.color = 'var(--text-2)';
+        }}
+      >
+        <MoreVertical size={16} strokeWidth={1.5} />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-44">
+        <DropdownMenuItem
+          onSelect={(e) => {
+            // Keep menu open through the async mutation; close on settle.
+            e.preventDefault();
+            void onDuplicate();
+          }}
+          disabled={duplicateBusy}
+          aria-busy={duplicateBusy || undefined}
+        >
+          <Copy size={14} strokeWidth={1.5} />
+          {duplicateBusy ? 'Дублирую…' : 'Дублировать'}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
