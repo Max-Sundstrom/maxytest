@@ -72,7 +72,9 @@ export function useBlockEvents(
   prototypeVersionId: string | null | undefined,
   blockId: string | null | undefined,
   dateRange?: DateRange,
+  opts?: { enabled?: boolean },
 ) {
+  const callerEnabled = opts?.enabled ?? true;
   return useQuery({
     queryKey: [
       'block-events',
@@ -81,7 +83,7 @@ export function useBlockEvents(
       dateRange?.startISO ?? null,
       dateRange?.endISO ?? null,
     ] as const,
-    enabled: !!prototypeVersionId && !!blockId,
+    enabled: callerEnabled && !!prototypeVersionId && !!blockId,
     staleTime: 30_000,
     queryFn: async (): Promise<BlockEventRow[]> => {
       let query = supabase

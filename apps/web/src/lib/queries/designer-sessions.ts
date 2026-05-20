@@ -52,7 +52,12 @@ export type DesignerSession = Database['public']['Tables']['sessions']['Row'];
  *                     disables the filter. Tuple is part of the queryKey so each
  *                     window gets its own cache slot.
  */
-export function useDesignerSessions(studyId: string | null | undefined, dateRange?: DateRange) {
+export function useDesignerSessions(
+  studyId: string | null | undefined,
+  dateRange?: DateRange,
+  opts?: { enabled?: boolean },
+) {
+  const callerEnabled = opts?.enabled ?? true;
   return useQuery({
     queryKey: [
       'designer-sessions',
@@ -60,7 +65,7 @@ export function useDesignerSessions(studyId: string | null | undefined, dateRang
       dateRange?.startISO ?? null,
       dateRange?.endISO ?? null,
     ] as const,
-    enabled: !!studyId,
+    enabled: callerEnabled && !!studyId,
     // 30s matches block-events / session-playback. Sessions list is mostly
     // read-only from the designer's POV (respondents create sessions; the
     // designer never modifies them).
