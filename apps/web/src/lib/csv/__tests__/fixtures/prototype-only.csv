@@ -1,0 +1,3 @@
+﻿session_id,started_at,completed_at,duration_seconds,device_type,outcome,q1_prototype_outcome,q1_prototype_duration_s
+sess-A,2026-05-01T10:00:00.000Z,2026-05-01T10:01:30.000Z,90,mobile,success,success,90
+sess-B,2026-05-01T11:00:00.000Z,2026-05-01T11:00:45.000Z,45,desktop,giveup,giveup,45

@@ -1,0 +1,4 @@
+﻿session_id,started_at,completed_at,duration_seconds,device_type,outcome,q1_choice,q1_choice_other_text,q2_scale,q3_nps,q4_agreement,q5_context_age,q5_context_experience,q5_context_role
+sess-1,2026-05-01T10:00:00.000Z,2026-05-01T10:02:00.000Z,120,mobile,,Мобильный|Десктоп,iPad,4,9,TRUE,25-34,3,UX-дизайнер
+sess-2,2026-05-01T11:00:00.000Z,2026-05-01T11:03:00.000Z,180,desktop,,Десктоп,,2,6,TRUE,18-24,1,Разработчик
+sess-3,2026-05-01T12:00:00.000Z,2026-05-01T12:04:00.000Z,240,tablet,,Планшет,,5,10,TRUE,25-34,5,Продакт
