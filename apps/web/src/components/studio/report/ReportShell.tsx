@@ -24,13 +24,13 @@
  * surface stays accessible while the new design-language summary sits above.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type JSX } from 'react';
 import { useBlocks } from '@/lib/queries/blocks';
 import { useDesignerSessions } from '@/lib/queries/designer-sessions';
 import { useFrames, type Frame } from '@/lib/queries/prototypes';
 import { useBlockEvents, type BlockEventRow } from '@/lib/queries/block-events';
 import { useResponses } from '@/lib/queries/responses';
-import { useSurveyResponses } from '@/lib/queries/survey-responses';
+import { useSurveyResponses, type SurveyResponseRow } from '@/lib/queries/survey-responses';
 import { classifyOutcome, type ClassifyOutcomeResult } from '@/lib/analytics/classify-outcome';
 import type { DatePreset, DateRange } from '@/lib/analytics/date-range';
 import {
@@ -42,12 +42,33 @@ import { quantile } from '@/lib/analytics/quantile';
 import { transitionGraph } from '@/lib/analytics/transition-graph';
 import { funnelSteps } from '@/lib/analytics/funnel-steps';
 import type { Block } from '@/lib/blocks/types';
+import type {
+  ChoiceAnswer,
+  ChoiceContent,
+  ContextAnswer,
+  ContextContent,
+  NpsAnswer,
+  ScaleAnswer,
+  ScaleContent,
+  AgreementAnswer,
+} from '@/lib/blocks/schemas';
+import { choiceAggregate } from '@/lib/analytics/choice-aggregate';
+import { scaleStats } from '@/lib/analytics/scale-stats';
+import { npsBreakdown } from '@/lib/analytics/nps-breakdown';
+import { agreementRate } from '@/lib/analytics/agreement-rate';
+import { contextAggregate } from '@/lib/analytics/context-aggregate';
 import { supabase } from '@/lib/supabase/auth';
+import { AgreementFocusedReport } from './AgreementFocusedReport';
+import { ChoiceFocusedReport } from './ChoiceFocusedReport';
+import { ContextFocusedReport } from './ContextFocusedReport';
+import { NpsFocusedReport } from './NpsFocusedReport';
+import { OpenQuestionFocusedReport } from './OpenQuestionFocusedReport';
 import { PlaybackDrawer } from './PlaybackDrawer';
 import { PrototypeFocusedReport } from './PrototypeFocusedReport';
 import { ReportSidebar } from './ReportSidebar';
 import { ReportTopbar } from './ReportTopbar';
 import { ResponsesView } from './ResponsesView';
+import { ScaleFocusedReport } from './ScaleFocusedReport';
 
 // Plan 03-04 — signed-URL TTL for FunnelSection thumbnails. Mirrors
 // PrototypeReport.tsx lines 51-52 (private `prototype-renders` bucket
@@ -262,6 +283,8 @@ export function ReportShell({ studyId }: ReportShellProps) {
     sessions,
     filteredEvents,
     outcomes,
+    blocks,
+    surveyResponsesAll,
   );
   const responsesCount = responseRows.length;
 
@@ -378,6 +401,40 @@ export function ReportShell({ studyId }: ReportShellProps) {
     }
     return m;
   }, [surveyResponsesAll, validSessionIds]);
+
+  // Plan 04-04 — per-block responses index for the focused-report cards.
+  // Filter-AWARE: same validSessionIds gate as responseCountByBlock above.
+  // Each card looks its block up here and feeds the result to its aggregator.
+  const responsesByBlock = useMemo(() => {
+    const m = new Map<string, SurveyResponseRow[]>();
+    for (const r of surveyResponsesAll) {
+      if (!validSessionIds.has(r.session_id)) continue;
+      const list = m.get(r.block_id) ?? [];
+      list.push(r);
+      m.set(r.block_id, list);
+    }
+    return m;
+  }, [surveyResponsesAll, validSessionIds]);
+
+  // Plan 04-04 — focused-block position (1-indexed) for the card header.
+  const focusedBlockPosition = useMemo(() => {
+    if (!focusedBlock) return 0;
+    const idx = blocks.findIndex((b) => b.id === focusedBlock.id);
+    return idx >= 0 ? idx + 1 : 0;
+  }, [focusedBlock, blocks]);
+
+  // Plan 04-04 — filters-active flag (drives LowNGateCard «Сбросить фильтры» CTA).
+  // True when date range is set OR status filter differs from the default
+  // (completed: true, incomplete: false).
+  const filtersActive = dateRange !== null || !statusFilter.completed || statusFilter.incomplete;
+
+  // Plan 04-04 — reset-filters helper passed to focused-report cards.
+  // Restores defaults — useCallback so the cards' memo identity is stable.
+  const onResetFilters = useCallback(() => {
+    setDateRange(null);
+    setDatePreset('all');
+    setStatusFilter({ completed: true, incomplete: false });
+  }, []);
 
   // D-35 — счётчики Успешно / Сдались скрываются, когда у блока нет ни
   // finish_frame_ids, ни success_path. N ответов + Avg + Median остаются.
@@ -552,10 +609,21 @@ export function ReportShell({ studyId }: ReportShellProps) {
                 onOpenPlayback={() => setPlaybackOpen(true)}
                 dateRange={dateRange}
               />
-            ) : SURVEY_ANALYTICAL_TYPES.includes(focusedBlock.type) ? (
-              <SurveyBlockPlaceholder type={focusedBlock.type} />
             ) : (
-              <EmptyReportState />
+              // Plan 04-04 — focused-report router for the 6 survey-analytical
+              // block types. Each card consumes its respective Wave 3
+              // aggregator and applies the low-N gate via LowNGateCard.
+              // ReportShell is the designer-side host — `publicMode` is NOT
+              // passed (defaults to false); PublicReportShell (Plan 04-07)
+              // will pass `publicMode={true}` for the M-2 closure.
+              <FocusedSurveyCard
+                block={focusedBlock}
+                position={focusedBlockPosition}
+                responsesByBlock={responsesByBlock}
+                validSessionIds={validSessionIds}
+                filtersActive={filtersActive}
+                onResetFilters={onResetFilters}
+              />
             )
           ) : (
             // Plan 03.1-04 — «Ответы N» view-mode. Clicking a row opens the
@@ -597,52 +665,139 @@ export function ReportShell({ studyId }: ReportShellProps) {
 // ─── Helper components ──────────────────────────────────────────────────
 
 /**
- * Placeholder card for survey blocks until Plan 04-04 ships their real
- * focused-report visuals (choice / scale / nps / agreement / context /
- * open_question). Designer clicks a block row in the sidebar — instead of
- * a blank canvas we surface an honest "coming next" message.
+ * Plan 04-04 focused-report router for the 6 survey-analytical block types.
+ *
+ * Switches on `block.type` and renders the appropriate FocusedReport card,
+ * after deriving the corresponding aggregator output from `responsesByBlock`.
+ * Each card internally applies the low-N gate via <LowNGateCard /> — this
+ * router only orchestrates the type-to-component mapping.
+ *
+ * B2 ordering lock preserved: `validSessionIds` is passed through unchanged;
+ * no card re-derives it. `responsesByBlock` is already filter-AWARE upstream.
+ *
+ * Designer-side ReportShell consumes this without passing `publicMode` —
+ * defaults flow through. Plan 04-07 PublicReportShell will pass
+ * `publicMode={true}` for the M-2 closure on each FocusedReport.
  */
-function SurveyBlockPlaceholder({ type }: { type: Block['type'] }) {
-  const labels: Partial<Record<Block['type'], string>> = {
-    choice: 'Выбор',
-    scale: 'Шкала',
-    nps: 'NPS',
-    agreement: 'Согласие',
-    context: 'О респонденте',
-    open_question: 'Открытый вопрос',
-  };
-  const label = labels[type] ?? type;
-  return (
-    <div
-      style={{
-        padding: '48px 24px',
-        textAlign: 'center',
-        background: 'var(--bg-card)',
-        border: '1px dashed var(--border-strong)',
-        borderRadius: 'var(--radius)',
-      }}
-    >
-      <h2
-        style={{
-          font: '500 17px/24px var(--font-sans)',
-          color: 'var(--text-1)',
-          margin: 0,
-        }}
-      >
-        Карточка отчёта для блока «{label}» появится в следующем плане
-      </h2>
-      <p
-        style={{
-          font: '400 13.5px/20px var(--font-sans)',
-          color: 'var(--text-2)',
-          margin: '6px 0 0',
-        }}
-      >
-        Визуальные карточки survey-блоков поставляются планом 04-04. Инфра (агрегаторы + запросы +
-        L-1 фильтрация) уже на месте.
-      </p>
-    </div>
-  );
+function FocusedSurveyCard({
+  block,
+  position,
+  responsesByBlock,
+  validSessionIds,
+  filtersActive,
+  onResetFilters,
+}: {
+  block: Block;
+  position: number;
+  responsesByBlock: ReadonlyMap<string, SurveyResponseRow[]>;
+  validSessionIds: ReadonlySet<string>;
+  filtersActive: boolean;
+  onResetFilters: () => void;
+}): JSX.Element {
+  const responsesForBlock = responsesByBlock.get(block.id) ?? [];
+  const validSessionCount = validSessionIds.size;
+
+  switch (block.type) {
+    case 'choice': {
+      const stats = choiceAggregate(
+        block.content as ChoiceContent,
+        responsesForBlock as unknown as { session_id: string; answer: ChoiceAnswer }[],
+      );
+      return (
+        <ChoiceFocusedReport
+          block={block}
+          stats={stats}
+          position={position}
+          validSessionCount={validSessionCount}
+          filtersActive={filtersActive}
+          onResetFilters={onResetFilters}
+        />
+      );
+    }
+    case 'scale': {
+      const content = block.content as ScaleContent;
+      const stats = scaleStats(
+        content.points,
+        responsesForBlock as unknown as { session_id: string; answer: ScaleAnswer }[],
+      );
+      return (
+        <ScaleFocusedReport
+          block={block}
+          stats={stats}
+          position={position}
+          validSessionCount={validSessionCount}
+          filtersActive={filtersActive}
+          onResetFilters={onResetFilters}
+        />
+      );
+    }
+    case 'nps': {
+      const stats = npsBreakdown(
+        responsesForBlock as unknown as { session_id: string; answer: NpsAnswer }[],
+      );
+      return (
+        <NpsFocusedReport
+          block={block}
+          stats={stats}
+          position={position}
+          validSessionCount={validSessionCount}
+          filtersActive={filtersActive}
+          onResetFilters={onResetFilters}
+        />
+      );
+    }
+    case 'agreement': {
+      const stats = agreementRate(
+        responsesForBlock as unknown as {
+          session_id: string;
+          answer: Partial<AgreementAnswer>;
+        }[],
+        validSessionIds,
+      );
+      return (
+        <AgreementFocusedReport
+          block={block}
+          stats={stats}
+          position={position}
+          validSessionCount={validSessionCount}
+          filtersActive={filtersActive}
+          onResetFilters={onResetFilters}
+        />
+      );
+    }
+    case 'context': {
+      const stats = contextAggregate(
+        block.content as ContextContent,
+        responsesForBlock as unknown as { session_id: string; answer: Partial<ContextAnswer> }[],
+      );
+      return (
+        <ContextFocusedReport
+          block={block}
+          stats={stats}
+          position={position}
+          validSessionCount={validSessionCount}
+          filtersActive={filtersActive}
+          onResetFilters={onResetFilters}
+        />
+      );
+    }
+    case 'open_question':
+      return (
+        <OpenQuestionFocusedReport
+          block={block}
+          responses={responsesForBlock}
+          validSessionIds={validSessionIds}
+          position={position}
+          filtersActive={filtersActive}
+          onResetFilters={onResetFilters}
+        />
+      );
+    default:
+      // welcome / thanks / agreement-as-non-analytical / unknown types — the
+      // sidebar filter normally hides these, but defensive fall-through keeps
+      // the canvas from going blank if a designer somehow surfaces one.
+      return <EmptyReportState />;
+  }
 }
 
 function SkeletonCard() {
