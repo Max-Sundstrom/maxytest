@@ -13,12 +13,12 @@
  * with /app and /studies/$id/edit holds.
  */
 
-import { Share2 } from 'lucide-react';
 import { useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import { MLogo } from '@/components/shared/MLogo';
 import { UserAvatarMenu } from '@/components/shared/UserAvatarMenu';
 import { useStudy } from '@/lib/queries/studies';
+import { ShareReportButton } from '@/components/studio/share/ShareReportButton';
 import { CsvDownloadButton } from './CsvDownloadButton';
 import type { Block } from '@/lib/blocks/types';
 import type { DesignerSession } from '@/lib/queries/designer-sessions';
@@ -155,14 +155,13 @@ export function ReportTopbar({
             prototypeBlockId={prototypeBlockId}
             finishFrameIds={finishFrameIds}
           />
-          {/* «Поделиться отчётом» — Plan 04-06 ships the real share button.
-              Until then the placeholder icon-button stays so the slot exists. */}
-          <IconBtn
-            aria-label="Поделиться публичной ссылкой"
-            onClick={() => toast.info('Публичные ссылки отчёта — Plan 04-06.')}
-          >
-            <Share2 size={15} strokeWidth={1.5} />
-          </IconBtn>
+          {/* «Поделиться отчётом» — Plan 04-06 share-token UX. Primary
+              moss-accent button; opens ShareSettingsDialog on click. */}
+          <ShareReportButton
+            studyId={studyId}
+            studyTitle={study?.title ?? 'Untitled test'}
+            blocks={blocks}
+          />
           <UserAvatarMenu />
         </div>
       </div>
@@ -261,40 +260,7 @@ function DocTab({ active, badge, onClick, children }: DocTabProps) {
   );
 }
 
-interface IconBtnProps {
-  children: React.ReactNode;
-  onClick?: () => void;
-  'aria-label': string;
-}
-
-function IconBtn({ children, onClick, ...props }: IconBtnProps) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        width: 32,
-        height: 32,
-        display: 'grid',
-        placeItems: 'center',
-        background: 'transparent',
-        border: 0,
-        borderRadius: 'var(--radius)',
-        color: 'var(--text-2)',
-        cursor: 'pointer',
-        transition: 'background 120ms cubic-bezier(.2,.7,.3,1)',
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.background = 'var(--bg-chip)';
-        e.currentTarget.style.color = 'var(--text-1)';
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = 'transparent';
-        e.currentTarget.style.color = 'var(--text-2)';
-      }}
-      {...props}
-    >
-      {children}
-    </button>
-  );
-}
+// IconBtn helper removed in Plan 04-06 Task 7 — the only call site (the
+// placeholder share icon) was replaced by the real <ShareReportButton />
+// from `@/components/studio/share/ShareReportButton`. Re-add this helper
+// if a future task needs a 32px ghost icon button in the topbar.

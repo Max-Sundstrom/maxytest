@@ -69,6 +69,10 @@ import { ReportSidebar } from './ReportSidebar';
 import { ReportTopbar } from './ReportTopbar';
 import { ResponsesView } from './ResponsesView';
 import { ScaleFocusedReport } from './ScaleFocusedReport';
+// Plan 04-06 Task 7 — share-token banner + dialog wiring.
+import { ShareBanner } from '@/components/studio/share/ShareBanner';
+import { ShareSettingsDialog } from '@/components/studio/share/ShareSettingsDialog';
+import { useShareToken } from '@/lib/queries/share-tokens';
 
 // Plan 03-04 — signed-URL TTL for FunnelSection thumbnails. Mirrors
 // PrototypeReport.tsx lines 51-52 (private `prototype-renders` bucket
@@ -160,6 +164,15 @@ export function ReportShell({ studyId }: ReportShellProps) {
   // (controlled mode on PlaybackDrawer — see Task 3 §C).
   const [viewMode, setViewMode] = useState<'aggregate' | 'responses'>('aggregate');
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+
+  // Plan 04-06 Task 7 — share-token dialog lifted state so both
+  // <ShareReportButton /> (in topbar) and <ShareBanner /> (above canvas)
+  // can open the same ShareSettingsDialog instance. The topbar button
+  // owns its own internal dialog, so this state-driven instance only
+  // surfaces when ShareBanner's «Управление публикацией» secondary button
+  // is clicked.
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const { data: shareToken } = useShareToken(studyId);
 
   // Plan 04-03 D-97 — focused-block resolution. Designer-chosen activeBlockId
   // wins; otherwise default to the prototype block; otherwise the first
@@ -586,6 +599,12 @@ export function ReportShell({ studyId }: ReportShellProps) {
             minWidth: 0,
           }}
         >
+          {/* Plan 04-06 D-105 — Public-share status banner. Surfaces only
+              while a token is active; clicking «Управление публикацией»
+              opens ShareSettingsDialog via lifted state. */}
+          {shareToken && shareToken.is_active && (
+            <ShareBanner token={shareToken} onOpenSettings={() => setShareDialogOpen(true)} />
+          )}
           {blocksLoading ? (
             <SkeletonCard />
           ) : focusedBlock === null ? (
@@ -666,6 +685,20 @@ export function ReportShell({ studyId }: ReportShellProps) {
           onSelectedSessionIdChange={setSelectedSessionId}
         />
       ) : null}
+
+      {/* Plan 04-06 Task 7 — Share-settings dialog opened from ShareBanner.
+          The ShareReportButton in ReportTopbar owns its own internal dialog
+          instance; both share the same `useShareToken(studyId)` query so
+          state stays in sync through TanStack cache. */}
+      {shareDialogOpen && (
+        <ShareSettingsDialog
+          open={shareDialogOpen}
+          onOpenChange={setShareDialogOpen}
+          studyId={studyId}
+          studyTitle=""
+          blocks={blocks}
+        />
+      )}
     </div>
   );
 }
