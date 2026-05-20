@@ -30,6 +30,11 @@ import { WelcomeEditor } from './editors/WelcomeEditor';
 import { OpenQuestionEditor } from './editors/OpenQuestionEditor';
 import { ThanksEditor } from './editors/ThanksEditor';
 import { PrototypeEditor } from './editors/PrototypeEditor';
+import { ChoiceEditor } from './editors/ChoiceEditor';
+import { ScaleEditor } from './editors/ScaleEditor';
+import { NpsEditor } from './editors/NpsEditor';
+import { AgreementEditor } from './editors/AgreementEditor';
+import { ContextEditor } from './editors/ContextEditor';
 
 export interface BlockCardProps {
   block: Block;
@@ -130,36 +135,115 @@ export function BlockCard({ block, index, studyId, workspaceId }: BlockCardProps
     );
   };
 
-  const editor =
-    block.type === 'welcome' ? (
-      <WelcomeEditor
-        block={block}
-        disabled={isConflict}
-        onSave={handleSave}
-        serverVersion={block.version}
-      />
-    ) : block.type === 'open_question' ? (
-      <OpenQuestionEditor
-        block={block}
-        disabled={isConflict}
-        onSave={handleSave}
-        serverVersion={block.version}
-      />
-    ) : block.type === 'prototype' ? (
-      <PrototypeEditor
-        block={block}
-        disabled={isConflict}
-        onSave={handleSave}
-        serverVersion={block.version}
-      />
-    ) : (
-      <ThanksEditor
-        block={block}
-        disabled={isConflict}
-        onSave={handleSave}
-        serverVersion={block.version}
-      />
-    );
+  // Editor dispatch — single source of truth for "which editor renders for
+  // which block.type". Phase 4 adds 5 new survey blocks (choice / scale /
+  // nps / agreement / context); the unsupported-type fallback at the end
+  // catches future blocks that haven't shipped their editor yet.
+  let editor: React.ReactNode;
+  switch (block.type) {
+    case 'welcome':
+      editor = (
+        <WelcomeEditor
+          block={block}
+          disabled={isConflict}
+          onSave={handleSave}
+          serverVersion={block.version}
+        />
+      );
+      break;
+    case 'open_question':
+      editor = (
+        <OpenQuestionEditor
+          block={block}
+          disabled={isConflict}
+          onSave={handleSave}
+          serverVersion={block.version}
+        />
+      );
+      break;
+    case 'prototype':
+      editor = (
+        <PrototypeEditor
+          block={block}
+          disabled={isConflict}
+          onSave={handleSave}
+          serverVersion={block.version}
+        />
+      );
+      break;
+    case 'choice':
+      editor = (
+        <ChoiceEditor
+          block={block}
+          disabled={isConflict}
+          onSave={handleSave}
+          serverVersion={block.version}
+        />
+      );
+      break;
+    case 'scale':
+      editor = (
+        <ScaleEditor
+          block={block}
+          disabled={isConflict}
+          onSave={handleSave}
+          serverVersion={block.version}
+        />
+      );
+      break;
+    case 'nps':
+      editor = (
+        <NpsEditor
+          block={block}
+          disabled={isConflict}
+          onSave={handleSave}
+          serverVersion={block.version}
+        />
+      );
+      break;
+    case 'agreement':
+      editor = (
+        <AgreementEditor
+          block={block}
+          disabled={isConflict}
+          onSave={handleSave}
+          serverVersion={block.version}
+        />
+      );
+      break;
+    case 'context':
+      editor = (
+        <ContextEditor
+          block={block}
+          disabled={isConflict}
+          onSave={handleSave}
+          serverVersion={block.version}
+        />
+      );
+      break;
+    case 'thanks':
+      editor = (
+        <ThanksEditor
+          block={block}
+          disabled={isConflict}
+          onSave={handleSave}
+          serverVersion={block.version}
+        />
+      );
+      break;
+    default:
+      editor = (
+        <p
+          style={{
+            font: '400 13px/18px var(--font-sans)',
+            color: 'var(--text-2)',
+            margin: 0,
+          }}
+        >
+          Этот тип блока ещё не реализован — появится в следующих фазах.
+        </p>
+      );
+  }
 
   const blockTitle =
     (block.content as { title?: string; question?: string }).title?.toString().trim() ||
