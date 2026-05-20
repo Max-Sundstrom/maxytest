@@ -283,6 +283,8 @@ export function ReportShell({ studyId }: ReportShellProps) {
     sessions,
     filteredEvents,
     outcomes,
+    blocks,
+    surveyResponsesAll,
   );
   const responsesCount = responseRows.length;
 

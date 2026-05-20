@@ -33,9 +33,21 @@ import { supabaseAnon } from '@/lib/supabase/anon';
 import type { Json } from '@/lib/supabase/types.gen';
 import type { BlockEventRow } from '@/lib/queries/block-events';
 import type { DesignerSession } from '@/lib/queries/designer-sessions';
+import type { SurveyResponseRow } from '@/lib/queries/survey-responses';
 import type { ClassifyOutcomeResult } from '@/lib/analytics/classify-outcome';
 import type { DateRange } from '@/lib/analytics/date-range';
 import { classifyCompletion, type StatusFilter } from '@/lib/analytics/session-filter';
+import type { Block } from '@/lib/blocks/types';
+import type {
+  AgreementAnswer,
+  ChoiceAnswer,
+  ChoiceContent,
+  ContextAnswer,
+  ContextContent,
+  NpsAnswer,
+  ScaleAnswer,
+  ScaleContent,
+} from '@/lib/blocks/schemas';
 
 export interface SubmitResponseInput {
   sessionId: string;
@@ -129,6 +141,34 @@ export interface ResponsePrototypeSummary {
   durationMs: number;
 }
 
+/**
+ * Phase 4 / Plan 04-04 D-98 — per-block answer summary line for the
+ * vertical-stack rendering of the «Ответы» column in ResponsesView.
+ *
+ * `blockLines[]` is the CANONICAL source of truth for the column. One
+ * entry per non-skipped, non-welcome/thanks block in the test, ordered by
+ * `block.position`. Skipped blocks contribute NO entry (D-98 — em-dash is
+ * NOT rendered for missing answers; the gap conveys the same info).
+ *
+ * Plan 04-04 — line text format (D-98 contract):
+ *   - choice (single)  → «⚫ Выбор: Мобильный»
+ *   - choice (multi)   → «⚫ Выбор: А, Б, В» (truncated to 80 chars)
+ *   - scale            → «⊳ Шкала: 4/5»
+ *   - nps              → «♡ NPS: 9 (промоутер)»
+ *   - agreement        → «✓ Согласие» | «— Не согласился»
+ *   - context          → «👤 Контекст: 25–34 · Опыт 4 · UX-дизайнер» (enabled only)
+ *   - open_question    → first 80 chars
+ *   - prototype        → «4 фрейма · 1.2 мин» (legacy formatter)
+ */
+export interface ResponseBlockLine {
+  blockId: string;
+  /** 0-indexed block.position used for stable display order. */
+  position: number;
+  type: string;
+  /** Display-ready line (Russian, ellipsis-truncated where applicable). */
+  line: string;
+}
+
 /** Row shape consumed by `<ResponsesView/>` — one per session. */
 export interface ResponseRow {
   sessionId: string;
@@ -138,9 +178,14 @@ export interface ResponseRow {
   outcome: ResponseOutcome;
   /** Prototype-block answer summary; `null` when the session has no events. */
   prototypeSummary: ResponsePrototypeSummary | null;
-  // Future block-type summaries (e.g. openAnswerText, choiceLabel) land
-  // here as additional optional fields. Phase 03.1 ships prototypeSummary
-  // only — other block-type summaries deferred to Phase 4.
+  /**
+   * Phase 4 D-98 — per-block summary stack. Plan 04-04 ResponsesView renders
+   * one line per entry as a vertical stack inside the «Ответы» column. Empty
+   * array → «Нет ответов» fallback. Always populated by `buildResponseRows`
+   * (may be empty if the session answered nothing AND prototype has no
+   * events).
+   */
+  blockLines: ResponseBlockLine[];
 }
 
 /** Map the DB string into our discriminated union. Cheap, no allocations. */
@@ -155,11 +200,19 @@ function normalizeDeviceType(raw: string | null | undefined): ResponseDeviceType
  * No React, no Supabase, no clock reads. All inputs are passed in; outputs
  * are deterministic given inputs. Easy to unit-test in Vitest without
  * `renderHook`.
+ *
+ * Plan 04-04 Task 6 extension — accepts `blocks` + `surveyResponses` so the
+ * per-row `blockLines[]` stack can be derived in the same pure transform.
+ * Phase 03.1 callers that only have sessions + events + outcomes can pass
+ * empty `[]` for both (back-compat path: `blockLines` becomes prototype-only
+ * or empty).
  */
 export function buildResponseRows(
   sessions: readonly DesignerSession[],
   events: readonly BlockEventRow[],
   outcomes: readonly ClassifyOutcomeResult[],
+  blocks: readonly Block[] = [],
+  surveyResponses: readonly SurveyResponseRow[] = [],
 ): ResponseRow[] {
   // Build the outcome lookup once. `sessionId → ('success' | 'giveup')`.
   const outcomeBySession = new Map<string, ResponseOutcome>();
@@ -174,6 +227,21 @@ export function buildResponseRows(
     if (list) list.push(e);
     else eventsBySession.set(e.session_id, [e]);
   }
+
+  // Plan 04-04 — group survey responses by (session_id, block_id) lookup so
+  // per-row line derivation is O(blocks) rather than O(blocks × responses).
+  const surveyBySession = new Map<string, Map<string, SurveyResponseRow>>();
+  for (const r of surveyResponses) {
+    let perSession = surveyBySession.get(r.session_id);
+    if (!perSession) {
+      perSession = new Map<string, SurveyResponseRow>();
+      surveyBySession.set(r.session_id, perSession);
+    }
+    perSession.set(r.block_id, r);
+  }
+
+  // Order blocks by position once so every row sees the same stack order.
+  const orderedBlocks = [...blocks].sort((a, b) => a.position - b.position);
 
   const rows: ResponseRow[] = sessions.map((s) => {
     const sessionEvents = eventsBySession.get(s.id);
@@ -198,12 +266,33 @@ export function buildResponseRows(
       };
     }
 
+    // Plan 04-04 D-98 — build the per-block summary stack in block.position
+    // order. Skipped blocks (no response AND not the prototype) contribute
+    // NO entry. welcome/thanks are skipped entirely — they have no
+    // analytical answer to summarize.
+    const sessionResponses = surveyBySession.get(s.id);
+    const blockLines: ResponseBlockLine[] = [];
+    for (const block of orderedBlocks) {
+      if (block.type === 'welcome' || block.type === 'thanks') continue;
+      const resp = sessionResponses?.get(block.id);
+      const line = summarizeBlockAnswer(block, resp, prototypeSummary);
+      if (line !== null) {
+        blockLines.push({
+          blockId: block.id,
+          position: block.position,
+          type: block.type,
+          line,
+        });
+      }
+    }
+
     return {
       sessionId: s.id,
       startedAt: s.started_at,
       deviceType: normalizeDeviceType(s.device_type),
       outcome: outcomeBySession.get(s.id) ?? 'incomplete',
       prototypeSummary,
+      blockLines,
     };
   });
 
@@ -213,6 +302,94 @@ export function buildResponseRows(
   rows.sort((a, b) => (a.startedAt < b.startedAt ? 1 : a.startedAt > b.startedAt ? -1 : 0));
 
   return rows;
+}
+
+/**
+ * PURE — per-block answer summarizer. Returns the one-line string per D-98
+ * contract OR `null` when the session didn't answer this block (skipped) AND
+ * there's no implicit fallback (e.g. prototype with no events).
+ *
+ * Non-export: only `buildResponseRows` consumes it; co-located so the format
+ * contract is testable in isolation if Phase 5 wants per-line snapshots.
+ */
+function summarizeBlockAnswer(
+  block: Block,
+  resp: SurveyResponseRow | undefined,
+  prototypeSummary: ResponsePrototypeSummary | null,
+): string | null {
+  switch (block.type) {
+    case 'choice': {
+      const content = block.content as ChoiceContent;
+      const a = resp?.answer as ChoiceAnswer | undefined;
+      if (!a) return null;
+      if (
+        content.mode === 'single' &&
+        typeof a.selectedId === 'string' &&
+        a.selectedId.length > 0
+      ) {
+        const opt = content.options.find((o) => o.id === a.selectedId);
+        return `⚫ Выбор: ${opt?.label ?? a.selectedId}`;
+      }
+      if (content.mode === 'multi' && Array.isArray(a.selectedIds) && a.selectedIds.length > 0) {
+        const labels = a.selectedIds.map(
+          (id) => content.options.find((o) => o.id === id)?.label ?? id,
+        );
+        const text = labels.join(', ');
+        return `⚫ Выбор: ${text.length > 80 ? text.slice(0, 77) + '…' : text}`;
+      }
+      return null;
+    }
+    case 'scale': {
+      const content = block.content as ScaleContent;
+      const a = resp?.answer as ScaleAnswer | undefined;
+      if (typeof a?.value !== 'number') return null;
+      return `⊳ Шкала: ${a.value}/${content.points}`;
+    }
+    case 'nps': {
+      const a = resp?.answer as NpsAnswer | undefined;
+      if (typeof a?.score !== 'number') return null;
+      const cat = a.score <= 6 ? 'детрактор' : a.score <= 8 ? 'нейтрал' : 'промоутер';
+      return `♡ NPS: ${a.score} (${cat})`;
+    }
+    case 'agreement': {
+      const a = resp?.answer as Partial<AgreementAnswer> | undefined;
+      if (a?.agreed === true) return '✓ Согласие';
+      if (resp) return '— Не согласился';
+      return null;
+    }
+    case 'context': {
+      const content = block.content as ContextContent;
+      const a = resp?.answer as Partial<ContextAnswer> | undefined;
+      if (!a) return null;
+      const parts: string[] = [];
+      if (content.age_question?.enabled && typeof a.age === 'string') {
+        const opt = content.age_question.options.find((o) => o.id === a.age);
+        parts.push(opt?.label ?? a.age);
+      }
+      if (content.experience_question?.enabled && typeof a.experience === 'number') {
+        parts.push(`Опыт ${a.experience}`);
+      }
+      if (content.role_question?.enabled && typeof a.role === 'string' && a.role.length > 0) {
+        parts.push(a.role);
+      }
+      if (parts.length === 0) return null;
+      return `👤 Контекст: ${parts.join(' · ')}`;
+    }
+    case 'open_question': {
+      const a = resp?.answer as { text?: string } | undefined;
+      if (typeof a?.text !== 'string' || a.text.length === 0) return null;
+      return a.text.length > 80 ? a.text.slice(0, 77) + '…' : a.text;
+    }
+    case 'prototype': {
+      if (!prototypeSummary) return null;
+      const { framesVisited, durationMs } = prototypeSummary;
+      const framesWord = framesVisited === 1 ? 'фрейм' : 'фреймов';
+      const minutes = (durationMs / 60_000).toFixed(1);
+      return `${framesVisited} ${framesWord} · ${minutes} мин`;
+    }
+    default:
+      return null;
+  }
 }
 
 /**
@@ -272,9 +449,16 @@ export function useResponses(
   sessions: readonly DesignerSession[],
   events: readonly BlockEventRow[],
   outcomes: readonly ClassifyOutcomeResult[],
+  /**
+   * Plan 04-04 Task 6 — per-block summary lines are derived from these two
+   * inputs. Phase 03.1 callers that didn't have them defaulted to `[]` /
+   * `[]` via the buildResponseRows back-compat path.
+   */
+  blocks: readonly Block[] = [],
+  surveyResponses: readonly SurveyResponseRow[] = [],
 ): ResponseRow[] {
   return useMemo(() => {
-    const rows = buildResponseRows(sessions, events, outcomes);
+    const rows = buildResponseRows(sessions, events, outcomes, blocks, surveyResponses);
     if (rows.length === 0) return rows;
     const sessionsById = new Map(sessions.map((s) => [s.id, s] as const));
     return applyStatusFilterToRows(rows, sessionsById, events, outcomes, statusFilter);
@@ -290,5 +474,7 @@ export function useResponses(
     sessions,
     events,
     outcomes,
+    blocks,
+    surveyResponses,
   ]);
 }
