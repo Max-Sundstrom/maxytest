@@ -26,7 +26,15 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { BLOCK_CATEGORIES, BLOCK_REGISTRY, type BlockCategory } from '@/lib/blocks/registry';
 import type { BlockType } from '@/lib/blocks/types';
-import { OPEN_QUESTION_DEFAULT, PROTOTYPE_DEFAULT_PARTIAL } from '@/lib/blocks/defaults';
+import {
+  AGREEMENT_DEFAULT,
+  CHOICE_DEFAULT,
+  CONTEXT_DEFAULT,
+  NPS_DEFAULT,
+  OPEN_QUESTION_DEFAULT,
+  PROTOTYPE_DEFAULT_PARTIAL,
+  SCALE_DEFAULT,
+} from '@/lib/blocks/defaults';
 import { useAddBlock } from '@/lib/queries/blocks';
 import { useBuilderStore } from '@/lib/stores/builder';
 import { useUiStore } from '@/lib/stores/ui';
@@ -80,6 +88,16 @@ export function BlockCatalogPanel({ studyId, workspaceId }: BlockCatalogPanelPro
         type: 'prototype',
         content: PROTOTYPE_DEFAULT_PARTIAL as Parameters<typeof addMutation.mutate>[0]['content'],
       };
+    } else if (type === 'choice') {
+      payload = { position: insertPosition, type: 'choice', content: CHOICE_DEFAULT };
+    } else if (type === 'scale') {
+      payload = { position: insertPosition, type: 'scale', content: SCALE_DEFAULT };
+    } else if (type === 'nps') {
+      payload = { position: insertPosition, type: 'nps', content: NPS_DEFAULT };
+    } else if (type === 'agreement') {
+      payload = { position: insertPosition, type: 'agreement', content: AGREEMENT_DEFAULT };
+    } else if (type === 'context') {
+      payload = { position: insertPosition, type: 'context', content: CONTEXT_DEFAULT };
     }
     if (!payload) return;
 
@@ -122,7 +140,13 @@ export function BlockCatalogPanel({ studyId, workspaceId }: BlockCatalogPanelPro
                         onAdd={handleAdd}
                         isPending={
                           addMutation.isPending &&
-                          (type === 'open_question' || type === 'prototype')
+                          (type === 'open_question' ||
+                            type === 'prototype' ||
+                            type === 'choice' ||
+                            type === 'scale' ||
+                            type === 'nps' ||
+                            type === 'agreement' ||
+                            type === 'context')
                         }
                       />
                     ))}
