@@ -20,6 +20,7 @@
 
 import { MoreVertical } from 'lucide-react';
 import { useNavigate } from '@tanstack/react-router';
+import { toast } from 'sonner';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,8 +28,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { useArchiveStudy, useMoveStudyToDraft, type StudyRow } from '@/lib/queries/studies';
+import {
+  useArchiveStudy,
+  useDuplicateStudy,
+  useMoveStudyToDraft,
+  type StudyRow,
+} from '@/lib/queries/studies';
 import { BlockChipStrip, placeholderBlockTypesFor } from './BlockChipStrip';
 
 type LooseNavigate = (opts: { to: string; params?: Record<string, string> }) => unknown;
@@ -74,6 +79,20 @@ export function TestRow({
   const navigate = useNavigate() as unknown as LooseNavigate;
   const archive = useArchiveStudy();
   const moveToDraft = useMoveStudyToDraft();
+  // Plan 04-05 Task 7 — «Дублировать» action wires the previously-disabled
+  // placeholder item to the useDuplicateStudy hook + navigate to the new
+  // study's builder.
+  const duplicate = useDuplicateStudy();
+
+  const handleDuplicate = async () => {
+    try {
+      const newId = await duplicate.mutateAsync({ studyId: study.id });
+      navigate({ to: '/studies/$id/edit', params: { id: newId } });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Неизвестная ошибка';
+      toast.error('Не удалось дублировать тест', { description: message });
+    }
+  };
 
   const isDraft = study.status === 'draft';
   const isPublished = study.status === 'published';
@@ -203,14 +222,19 @@ export function TestRow({
               Вернуть в черновик
             </DropdownMenuItem>
           )}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <DropdownMenuItem disabled aria-disabled>
-                Дублировать
-              </DropdownMenuItem>
-            </TooltipTrigger>
-            <TooltipContent side="left">Будет в Phase 4</TooltipContent>
-          </Tooltip>
+          <DropdownMenuItem
+            onSelect={(e) => {
+              // Prevent the Radix menu from closing before navigate fires;
+              // close happens after the async mutation settles (toast on
+              // failure, navigate on success).
+              e.preventDefault();
+              void handleDuplicate();
+            }}
+            disabled={duplicate.isPending}
+            aria-busy={duplicate.isPending || undefined}
+          >
+            {duplicate.isPending ? 'Дублирую…' : 'Дублировать'}
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           {!isArchived ? (
             <DropdownMenuItem
