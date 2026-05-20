@@ -34,6 +34,36 @@
 import type { ClassifyOutcomeResult } from './classify-outcome';
 import type { BlockEventRow } from '@/lib/queries/block-events';
 import type { DesignerSession } from '@/lib/queries/designer-sessions';
+import type { Block } from '@/lib/blocks/types';
+import type { AgreementContent } from '@/lib/blocks/schemas';
+
+/**
+ * Minimal row shape for the survey-completion path. Defined STRUCTURALLY
+ * (not importing from `@/lib/queries/survey-responses`) so this module
+ * stays free of the queries-layer dependency and can be unit-tested
+ * without touching TanStack Query. The full row type with more fields
+ * (`answer`, `time_ms`, `submitted_at`) lives in `survey-responses.ts`
+ * and is structurally assignable to this one.
+ */
+export interface SurveyCompletionRow {
+  session_id: string;
+  block_id: string;
+}
+
+/**
+ * Block types that REQUIRE an answer for a survey-only test to count as
+ * «completed». welcome / thanks have no answers; prototype is classified
+ * by the existing 3-condition OR (task_finish event / sessions.status /
+ * outcomes); agreement is required only when `content.required === true`
+ * (D-95 default true, designer may disable).
+ */
+const SURVEY_REQUIRED_TYPES = new Set<Block['type']>([
+  'choice',
+  'scale',
+  'nps',
+  'open_question',
+  'context',
+]);
 
 /**
  * Two-flag filter — both default to `true` would mean "show everything";
@@ -48,15 +78,30 @@ export type StatusFilter = {
 /**
  * Classify a single session as `'completed'` | `'incomplete'`.
  *
- * Returns `'completed'` if ANY of the three CONTEXT.md GA2 / D-72 conditions
- * holds, otherwise `'incomplete'`. See module header for the documented
- * race rationale.
+ * Returns `'completed'` if ANY of the FOUR conditions holds, otherwise
+ * `'incomplete'`. See module header for the documented race rationale.
+ *
+ * Phase 4 / Plan 04-03 (L-1 closure) extends the original three-condition
+ * OR with a FOURTH branch: `classifySurveyCompletion` — для survey-only
+ * тестов (welcome + survey blocks + thanks, no prototype) the existing
+ * three conditions never fire (`task_finish` is prototype-only, `outcomes`
+ * is empty, sessions.status is often still `'in_progress'` in the report
+ * timeframe). Without this fourth branch survey-only sessions were
+ * universally classified as «incomplete».
+ *
+ * **Backwards-compat:** the two new args (`blocks`, `surveyResponses`)
+ * both default to `[]`. Existing Phase 3 / Phase 3.1 call sites compile
+ * unchanged — the survey-path short-circuits to `false` when there are
+ * no survey-required blocks (`requiredBlockIds.size === 0`), so behaviour
+ * is byte-identical for prototype-only tests.
  */
 export function classifyCompletion(
   sessionId: string,
   sessionsById: ReadonlyMap<string, DesignerSession>,
   events: readonly BlockEventRow[],
   outcomes: readonly ClassifyOutcomeResult[],
+  blocks: readonly Block[] = [],
+  surveyResponses: readonly SurveyCompletionRow[] = [],
 ): 'completed' | 'incomplete' {
   // Condition 1 — explicit `status` column on the sessions row.
   if (sessionsById.get(sessionId)?.status === 'completed') return 'completed';
@@ -76,7 +121,67 @@ export function classifyCompletion(
     if (o.sessionId === sessionId) return 'completed';
   }
 
+  // Condition 4 (Phase 4 / L-1) — survey-completion path. Short-circuits
+  // to `false` for prototype-only tests (no survey-required blocks).
+  if (classifySurveyCompletion(sessionId, blocks, surveyResponses)) return 'completed';
+
   return 'incomplete';
+}
+
+/**
+ * Phase 4 / L-1 closure — for survey-only tests, classify a session as
+ * «прошёл survey-часть» iff it has a `responses` row for EVERY required
+ * survey block in the test.
+ *
+ * «Required survey blocks»:
+ *   - `welcome` / `thanks` — NEVER (no answers).
+ *   - `prototype`          — IGNORED (prototype-completion path is handled
+ *                             by the existing 3-condition OR in
+ *                             `classifyCompletion`).
+ *   - `choice` / `scale` / `nps` / `open_question` / `context` — ALWAYS
+ *                             required (any answer counts).
+ *   - `agreement`          — required ONLY when `content.required === true`
+ *                             (D-95 default true). When the designer
+ *                             flipped `required: false`, the block does
+ *                             NOT block survey-completion.
+ *
+ * Returns `false` when the test has NO survey-required blocks
+ * (prototype-only or fully empty). In that case the prototype-path in
+ * `classifyCompletion` is the sole source of truth — survey-path is
+ * a no-op (zero regression for Phase 3 / Phase 3.1).
+ */
+export function classifySurveyCompletion(
+  sessionId: string,
+  blocks: readonly Block[],
+  surveyResponses: readonly SurveyCompletionRow[],
+): boolean {
+  const requiredBlockIds = new Set<string>();
+  for (const b of blocks) {
+    if (SURVEY_REQUIRED_TYPES.has(b.type)) {
+      requiredBlockIds.add(b.id);
+      continue;
+    }
+    if (b.type === 'agreement') {
+      // `content` is the discriminated union; narrow defensively in case a
+      // future migration ships an incomplete row.
+      const required = (b.content as AgreementContent | undefined)?.required === true;
+      if (required) requiredBlockIds.add(b.id);
+    }
+  }
+
+  if (requiredBlockIds.size === 0) return false;
+
+  const answered = new Set<string>();
+  for (const r of surveyResponses) {
+    if (r.session_id === sessionId && requiredBlockIds.has(r.block_id)) {
+      answered.add(r.block_id);
+    }
+  }
+
+  for (const requiredId of requiredBlockIds) {
+    if (!answered.has(requiredId)) return false;
+  }
+  return true;
 }
 
 /**

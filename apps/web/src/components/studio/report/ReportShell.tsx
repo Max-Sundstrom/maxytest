@@ -30,6 +30,7 @@ import { useDesignerSessions } from '@/lib/queries/designer-sessions';
 import { useFrames, type Frame } from '@/lib/queries/prototypes';
 import { useBlockEvents, type BlockEventRow } from '@/lib/queries/block-events';
 import { useResponses } from '@/lib/queries/responses';
+import { useSurveyResponses } from '@/lib/queries/survey-responses';
 import { classifyOutcome, type ClassifyOutcomeResult } from '@/lib/analytics/classify-outcome';
 import type { DatePreset, DateRange } from '@/lib/analytics/date-range';
 import {
@@ -38,19 +39,15 @@ import {
   type StatusFilter,
 } from '@/lib/analytics/session-filter';
 import { quantile } from '@/lib/analytics/quantile';
-import { transitionGraph, type SankeyGraph } from '@/lib/analytics/transition-graph';
-import { funnelSteps, type FunnelStep } from '@/lib/analytics/funnel-steps';
+import { transitionGraph } from '@/lib/analytics/transition-graph';
+import { funnelSteps } from '@/lib/analytics/funnel-steps';
 import type { Block } from '@/lib/blocks/types';
-import { blockVisualOf } from '@/lib/blocks/visual';
 import { supabase } from '@/lib/supabase/auth';
-import { FunnelSection } from './FunnelSection';
 import { PlaybackDrawer } from './PlaybackDrawer';
-import { PrototypeReport } from './PrototypeReport';
-import { ReportSankey } from './ReportSankey';
+import { PrototypeFocusedReport } from './PrototypeFocusedReport';
 import { ReportSidebar } from './ReportSidebar';
 import { ReportTopbar } from './ReportTopbar';
 import { ResponsesView } from './ResponsesView';
-import { StatRich } from './StatRich';
 
 // Plan 03-04 — signed-URL TTL for FunnelSection thumbnails. Mirrors
 // PrototypeReport.tsx lines 51-52 (private `prototype-renders` bucket
@@ -67,11 +64,43 @@ export interface ReportShellProps {
   studyId: string;
 }
 
+// Block-type categories used by the focused-report router (Plan 04-03 D-97).
+// Survey-analytical types feed `useSurveyResponses` and the survey-completion
+// path in `classifyCompletion`. Prototype is its own canvas
+// (`<PrototypeFocusedReport />`). welcome / thanks / agreement live in the
+// runner only — they don't surface as standalone focused-report cards.
+const SURVEY_ANALYTICAL_TYPES: ReadonlyArray<Block['type']> = [
+  'choice',
+  'scale',
+  'nps',
+  'agreement',
+  'context',
+  'open_question',
+];
+const NON_REPORTABLE_TYPES: ReadonlySet<Block['type']> = new Set(['welcome', 'thanks']);
+
 export function ReportShell({ studyId }: ReportShellProps) {
   const { data: blocks = [], isLoading: blocksLoading } = useBlocks(studyId);
 
-  // Phase 2 ships ONE prototype block per study — pick it.
+  // Phase 2 ships ONE prototype block per study — pick it. Still referenced
+  // by the prototype-focused report card (PrototypeFocusedReport props).
   const prototypeBlock = useMemo(() => blocks.find((b: Block) => b.type === 'prototype'), [blocks]);
+
+  // Plan 04-03 D-97 — block-list shown in the sidebar (welcome / thanks
+  // never surface as focused cards). Agreement IS reportable (it has an
+  // analytics card in 04-04) so we keep it here.
+  const reportableBlocks = useMemo(
+    () => blocks.filter((b) => !NON_REPORTABLE_TYPES.has(b.type)),
+    [blocks],
+  );
+
+  // Plan 04-03 — survey-block ids for the SINGLE `useSurveyResponses` slot.
+  // `open_question` is conventionally a survey block too (responses table
+  // is the canonical storage) so it joins the same round-trip.
+  const surveyBlockIds = useMemo(
+    () => blocks.filter((b) => SURVEY_ANALYTICAL_TYPES.includes(b.type)).map((b) => b.id),
+    [blocks],
+  );
 
   const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
 
@@ -111,12 +140,18 @@ export function ReportShell({ studyId }: ReportShellProps) {
   const [viewMode, setViewMode] = useState<'aggregate' | 'responses'>('aggregate');
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
 
-  // Default the sidebar's active row to the prototype block once blocks land.
-  useEffect(() => {
-    if (!activeBlockId && prototypeBlock) {
-      setActiveBlockId(prototypeBlock.id);
+  // Plan 04-03 D-97 — focused-block resolution. Designer-chosen activeBlockId
+  // wins; otherwise default to the prototype block; otherwise the first
+  // analytical block in study order; otherwise null (empty-state copy).
+  const focusedBlock = useMemo<Block | null>(() => {
+    if (activeBlockId) {
+      const picked = blocks.find((b) => b.id === activeBlockId);
+      if (picked) return picked;
     }
-  }, [prototypeBlock, activeBlockId]);
+    if (prototypeBlock) return prototypeBlock;
+    const firstAnalytical = blocks.find((b) => SURVEY_ANALYTICAL_TYPES.includes(b.type));
+    return firstAnalytical ?? null;
+  }, [activeBlockId, prototypeBlock, blocks]);
 
   const pvId = (prototypeBlock?.content as { prototype_version_id?: string } | undefined)
     ?.prototype_version_id;
@@ -146,6 +181,13 @@ export function ReportShell({ studyId }: ReportShellProps) {
   // cached rows via TanStack Query, so this hook is the canonical
   // analytics driver for the whole report.
   const { data: allEvents = [] } = useBlockEvents(pvId, prototypeBlock?.id, dateRange);
+
+  // Plan 04-03 — single TanStack Query slot for ALL survey-block responses
+  // (Anti-pattern 1: no N+1 per-block queries). Feeds Plan 04-04 focused-
+  // report cards AND the L-1 survey-completion path inside `classifyCompletion`
+  // below. Stays cold (`enabled: false`) until there is at least one survey
+  // block in the test.
+  const { data: surveyResponsesAll = [] } = useSurveyResponses(studyId, surveyBlockIds, dateRange);
 
   // Plan 03.1-03 — sessions query feeds the «Тип» (Завершённые / Неполные)
   // classifier via the `sessions.status` column (CONTEXT.md GA2 / D-72
@@ -251,21 +293,91 @@ export function ReportShell({ studyId }: ReportShellProps) {
   // are derived from the same union of sources as the classifier itself:
   // sessionsById (covers sessions with no events at all) ∪ outcomesAll
   // (covers sessions that only exist as event rows) ∪ task_finish event
-  // session_ids (covers the race window).
+  // session_ids (covers the race window) ∪ surveyResponsesAll session_ids
+  // (covers Plan 04-03 L-1: survey-only tests have no prototype events
+  // but still need their sessions to enter the count union).
   const sidebarCounts = useMemo(() => {
     const sessionIds = new Set<string>();
     for (const id of sessionsById.keys()) sessionIds.add(id);
     for (const o of outcomesAll) sessionIds.add(o.sessionId);
     for (const e of allEvents) sessionIds.add(e.session_id);
+    for (const r of surveyResponsesAll) sessionIds.add(r.session_id);
     let completed = 0;
     let incomplete = 0;
     for (const id of sessionIds) {
-      const kind = classifyCompletion(id, sessionsById, allEvents, outcomesAll);
+      // Plan 04-03 L-1 — pass blocks + survey responses so survey-only
+      // sessions classify correctly. For prototype-only tests
+      // requiredBlockIds.size === 0 → survey-path is a no-op.
+      const kind = classifyCompletion(
+        id,
+        sessionsById,
+        allEvents,
+        outcomesAll,
+        blocks,
+        surveyResponsesAll,
+      );
       if (kind === 'completed') completed += 1;
       else incomplete += 1;
     }
     return { completed, incomplete };
-  }, [sessionsById, outcomesAll, allEvents]);
+  }, [sessionsById, outcomesAll, allEvents, surveyResponsesAll, blocks]);
+
+  // Plan 04-03 — validSessionIds is the filter-AWARE set of session IDs
+  // that are allowed to contribute to focused-report cards (aggregators
+  // in 04-04 consume it as the denominator + as the dedup key).
+  //
+  // Composition:
+  //   1. Every session in `outcomes` (prototype-completed AND passing the
+  //      «Тип» filter — outcomes is filter-AWARE per the B2 chain above).
+  //   2. Every session that has at least one survey response AND whose
+  //      classification matches `statusFilter`. We re-classify here using
+  //      the L-1 path so survey-only sessions enter the set.
+  //
+  // B2 ordering lock is preserved: outcomesAll (filter-UNAWARE) feeds
+  // filterEventsByStatus → outcomes (filter-AWARE) → validSessionIds.
+  const validSessionIds = useMemo(() => {
+    const s = new Set<string>();
+    for (const o of outcomes) s.add(o.sessionId);
+    for (const r of surveyResponsesAll) {
+      if (s.has(r.session_id)) continue; // already admitted via outcomes
+      const c = classifyCompletion(
+        r.session_id,
+        sessionsById,
+        filteredEvents,
+        outcomesAll,
+        blocks,
+        surveyResponsesAll,
+      );
+      if (
+        (c === 'completed' && statusFilter.completed) ||
+        (c === 'incomplete' && statusFilter.incomplete)
+      ) {
+        s.add(r.session_id);
+      }
+    }
+    return s;
+  }, [
+    outcomes,
+    surveyResponsesAll,
+    sessionsById,
+    filteredEvents,
+    outcomesAll,
+    blocks,
+    statusFilter,
+  ]);
+
+  // Plan 04-03 — per-block response count for the sidebar block-list.
+  // Filter-AWARE: only sessions in `validSessionIds` contribute. Plan 04-04
+  // will render these counts next to each block row.
+  const responseCountByBlock = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const r of surveyResponsesAll) {
+      if (validSessionIds.has(r.session_id)) {
+        m[r.block_id] = (m[r.block_id] ?? 0) + 1;
+      }
+    }
+    return m;
+  }, [surveyResponsesAll, validSessionIds]);
 
   // D-35 — счётчики Успешно / Сдались скрываются, когда у блока нет ни
   // finish_frame_ids, ни success_path. N ответов + Avg + Median остаются.
@@ -280,7 +392,7 @@ export function ReportShell({ studyId }: ReportShellProps) {
     () => new Map(frames.map((f) => [f.frame_id, f.name] as const)),
     [frames],
   );
-  const sankey = useMemo<SankeyGraph>(
+  const sankey = useMemo(
     () =>
       transitionGraph(filteredEvents, {
         mode: sankeyMode,
@@ -299,7 +411,7 @@ export function ReportShell({ studyId }: ReportShellProps) {
   // so this is a derived useMemo with zero additional network cost.
   // Plan 03.1-03 — input is `filteredEvents` so funnel narrows in lockstep
   // with the «Тип» filter.
-  const funnel = useMemo<FunnelStep[]>(
+  const funnel = useMemo(
     () => funnelSteps(filteredEvents, successPath, outcomes.length),
     [filteredEvents, successPath, outcomes.length],
   );
@@ -382,8 +494,8 @@ export function ReportShell({ studyId }: ReportShellProps) {
         }}
       >
         <ReportSidebar
-          blocks={blocks}
-          activeBlockId={activeBlockId}
+          blocks={reportableBlocks}
+          activeBlockId={focusedBlock?.id ?? null}
           onSelectBlock={setActiveBlockId}
           completedCount={sidebarCounts.completed}
           incompleteCount={sidebarCounts.incomplete}
@@ -395,6 +507,7 @@ export function ReportShell({ studyId }: ReportShellProps) {
           viewMode={viewMode}
           onViewModeChange={setViewMode}
           responsesCount={responsesCount}
+          responseCountByBlock={responseCountByBlock}
         />
 
         <main
@@ -410,30 +523,40 @@ export function ReportShell({ studyId }: ReportShellProps) {
         >
           {blocksLoading ? (
             <SkeletonCard />
-          ) : !prototypeBlock ? (
+          ) : focusedBlock === null ? (
             <EmptyReportState />
           ) : viewMode === 'aggregate' ? (
-            <FocusedBlockCard
-              block={prototypeBlock}
-              responses={stats.responses}
-              successCount={stats.successCount}
-              gaveUpCount={stats.gaveUpCount}
-              avgTimeS={stats.avgTimeS}
-              medianTimeS={stats.medianTimeS}
-              showOutcomeCounters={showOutcomeCounters}
-              frames={frames}
-              startingFrameId={startingFrameId}
-              studyId={studyId}
-              sankey={sankey}
-              sankeyMode={sankeyMode}
-              onSankeyModeChange={setSankeyMode}
-              successPath={successPath}
-              funnel={funnel}
-              funnelSignedUrls={funnelSignedUrls}
-              validSessionCount={outcomes.length}
-              onOpenPlayback={() => setPlaybackOpen(true)}
-              dateRange={dateRange}
-            />
+            // Plan 04-03 — focused-block router. Prototype keeps the full
+            // sankey + funnel + heatmap canvas via the extracted
+            // PrototypeFocusedReport. Survey blocks land in Plan 04-04 as
+            // their own focused cards; for now we show a placeholder.
+            focusedBlock.type === 'prototype' && prototypeBlock ? (
+              <PrototypeFocusedReport
+                block={prototypeBlock}
+                responses={stats.responses}
+                successCount={stats.successCount}
+                gaveUpCount={stats.gaveUpCount}
+                avgTimeS={stats.avgTimeS}
+                medianTimeS={stats.medianTimeS}
+                showOutcomeCounters={showOutcomeCounters}
+                frames={frames}
+                startingFrameId={startingFrameId}
+                studyId={studyId}
+                sankey={sankey}
+                sankeyMode={sankeyMode}
+                onSankeyModeChange={setSankeyMode}
+                successPath={successPath}
+                funnel={funnel}
+                funnelSignedUrls={funnelSignedUrls}
+                validSessionCount={outcomes.length}
+                onOpenPlayback={() => setPlaybackOpen(true)}
+                dateRange={dateRange}
+              />
+            ) : SURVEY_ANALYTICAL_TYPES.includes(focusedBlock.type) ? (
+              <SurveyBlockPlaceholder type={focusedBlock.type} />
+            ) : (
+              <EmptyReportState />
+            )
           ) : (
             // Plan 03.1-04 — «Ответы N» view-mode. Clicking a row opens the
             // PlaybackDrawer pre-selected to that session via the controlled-
@@ -471,292 +594,54 @@ export function ReportShell({ studyId }: ReportShellProps) {
   );
 }
 
-// ─── Focused block card ─────────────────────────────────────────────────
+// ─── Helper components ──────────────────────────────────────────────────
 
-interface FocusedBlockCardProps {
-  block: Block;
-  responses: number;
-  successCount: number;
-  gaveUpCount: number;
-  avgTimeS: string;
-  medianTimeS: string;
-  /** D-35 — when false, Успешно/Сдались tiles are hidden (no goal & no success_path). */
-  showOutcomeCounters: boolean;
-  frames: Frame[];
-  startingFrameId: string | undefined;
-  studyId: string;
-  /** Plan 03-02 — pre-computed sankey graph from `transitionGraph(...)`. */
-  sankey: SankeyGraph;
-  /** D-42 mode — 'first' (DAG) / 'all' (cycles + self-loops visible). */
-  sankeyMode: 'first' | 'all';
-  /** Mode-change handler bubbled up from ModeToggle. */
-  onSankeyModeChange: (mode: 'first' | 'all') => void;
-  /** Plan 03-04 — designer-defined success path (D-53 guards on `length > 0`). */
-  successPath: string[];
-  /** Plan 03-04 — pre-computed funnel steps from `funnelSteps(...)`. */
-  funnel: FunnelStep[];
-  /** Plan 03-04 — signed URLs for the funnel-step thumbnails. */
-  funnelSignedUrls: Record<string, string>;
-  /** Plan 03-04 — denominator for the FunnelSection `N из Total` text. */
-  validSessionCount: number;
-  /** Plan 03-06 — opens the PlaybackDrawer (D-64). */
-  onOpenPlayback: () => void;
-  /**
-   * Plan 03.1-07 — forwarded from ReportShell so PrototypeReport's per-frame
-   * hooks narrow in lockstep with the rest of the report.
-   */
-  dateRange: DateRange;
-}
-
-function FocusedBlockCard({
-  block,
-  responses,
-  successCount,
-  gaveUpCount,
-  avgTimeS,
-  medianTimeS,
-  showOutcomeCounters,
-  frames,
-  startingFrameId,
-  studyId,
-  sankey,
-  sankeyMode,
-  onSankeyModeChange,
-  successPath,
-  funnel,
-  funnelSignedUrls,
-  validSessionCount,
-  onOpenPlayback,
-  dateRange,
-}: FocusedBlockCardProps) {
-  const visual = blockVisualOf(block.type);
-  const ChipIcon = visual.icon;
-  const taskText =
-    ((block.content as { task_instruction?: string } | undefined)?.task_instruction ?? '').trim() ||
-    'Задание для этого блока не задано — добавь его в конструкторе.';
-
+/**
+ * Placeholder card for survey blocks until Plan 04-04 ships their real
+ * focused-report visuals (choice / scale / nps / agreement / context /
+ * open_question). Designer clicks a block row in the sidebar — instead of
+ * a blank canvas we surface an honest "coming next" message.
+ */
+function SurveyBlockPlaceholder({ type }: { type: Block['type'] }) {
+  const labels: Partial<Record<Block['type'], string>> = {
+    choice: 'Выбор',
+    scale: 'Шкала',
+    nps: 'NPS',
+    agreement: 'Согласие',
+    context: 'О респонденте',
+    open_question: 'Открытый вопрос',
+  };
+  const label = labels[type] ?? type;
   return (
-    <article
+    <div
       style={{
+        padding: '48px 24px',
+        textAlign: 'center',
         background: 'var(--bg-card)',
-        border: '1px solid var(--border-1)',
+        border: '1px dashed var(--border-strong)',
         borderRadius: 'var(--radius)',
-        boxShadow: 'var(--shadow-card)',
-        padding: '24px 28px 28px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 28,
       }}
     >
-      {/* Header */}
-      <header style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <span
-          aria-hidden="true"
-          style={{
-            font: '500 16px var(--font-sans)',
-            color: 'var(--text-2)',
-            minWidth: 22,
-          }}
-        >
-          4.
-        </span>
-        <span
-          aria-hidden="true"
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: 'var(--radius)',
-            background: visual.chipBg,
-            color: visual.chipFg,
-            display: 'grid',
-            placeItems: 'center',
-            flexShrink: 0,
-          }}
-        >
-          <ChipIcon size={14} strokeWidth={1.5} />
-        </span>
-        <span
-          style={{
-            flex: 1,
-            font: '500 15px/22px var(--font-sans)',
-            color: 'var(--text-1)',
-          }}
-        >
-          Figma
-        </span>
-        <span style={{ font: '400 13px var(--font-sans)', color: 'var(--text-2)' }}>
-          {responses} ответов
-        </span>
-        {/* Plan 03-06 — discovery CTA for per-respondent playback. The
-            button only makes sense if there's at least one valid session
-            to look at; we hide it when responses == 0 so the report
-            doesn't promise something it can't deliver yet. */}
-        {responses > 0 ? (
-          <button
-            type="button"
-            onClick={onOpenPlayback}
-            aria-label="Открыть список сессий и воспроизведение"
-            style={{
-              font: '500 13px var(--font-sans)',
-              color: 'var(--text-1)',
-              background: 'var(--bg-card)',
-              border: '1px solid var(--border-1)',
-              borderRadius: 'var(--radius)',
-              padding: '0 12px',
-              height: 32,
-              cursor: 'pointer',
-              transition: 'background 120ms cubic-bezier(.2,.7,.3,1)',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'var(--bg-chip)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'var(--bg-card)';
-            }}
-          >
-            Смотреть сессии
-          </button>
-        ) : null}
-      </header>
-
-      {/* Task callout */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <span
-          style={{
-            font: '400 12.5px var(--font-sans)',
-            color: 'var(--text-2)',
-            letterSpacing: '0.01em',
-          }}
-        >
-          Задание
-        </span>
-        <p
-          style={{
-            font: '500 18px/26px var(--font-sans)',
-            color: 'var(--text-1)',
-            margin: 0,
-            maxWidth: 760,
-          }}
-        >
-          {taskText}
-        </p>
-      </div>
-
-      {/* Stat grid — D-35: collapse to 2 columns when no goal & no success_path */}
-      <div
+      <h2
         style={{
-          display: 'grid',
-          gridTemplateColumns: showOutcomeCounters ? 'repeat(4, 1fr)' : 'repeat(2, 1fr)',
-          gap: 24,
-          paddingBottom: 20,
-          borderBottom: '1px dashed var(--border-1)',
+          font: '500 17px/24px var(--font-sans)',
+          color: 'var(--text-1)',
+          margin: 0,
         }}
       >
-        {showOutcomeCounters && (
-          <>
-            <StatRich
-              icon="user-check"
-              iconColor="var(--color-success)"
-              label="Успешно"
-              value={String(successCount)}
-            />
-            <StatRich
-              icon="user-x"
-              iconColor="var(--color-warning)"
-              label="Сдались"
-              value={String(gaveUpCount)}
-            />
-          </>
-        )}
-        <StatRich label="Среднее время" value={`${avgTimeS} с`} />
-        <StatRich label="Медианное время" value={`${medianTimeS} с`} />
-      </div>
-
-      {/* Paths section */}
-      <Section
-        title="Пути"
-        subtitle="Исследуйте, как пользователи перемещаются по экранам прототипа. Колесо или ⌘+скролл — зум, drag — пан."
+        Карточка отчёта для блока «{label}» появится в следующем плане
+      </h2>
+      <p
+        style={{
+          font: '400 13.5px/20px var(--font-sans)',
+          color: 'var(--text-2)',
+          margin: '6px 0 0',
+        }}
       >
-        <ReportSankey
-          sankey={sankey}
-          mode={sankeyMode}
-          onModeChange={onSankeyModeChange}
-          frames={frames}
-          startingFrameId={startingFrameId}
-        />
-      </Section>
-
-      {/* Plan 03-04 — Success-path funnel (D-51 placement: between «Пути»
-          and «Тепловые карты и клики»). D-53 — section is hidden entirely
-          when no success_path is set. */}
-      {successPath.length > 0 && (
-        <Section
-          title="Целевой путь"
-          subtitle="Как респонденты проходят по шагам, которые ты задал в конструкторе. Семантика — Forgiving (любой порядок)."
-        >
-          <FunnelSection
-            steps={funnel}
-            frames={frames}
-            signedUrls={funnelSignedUrls}
-            validSessionCount={validSessionCount}
-          />
-        </Section>
-      )}
-
-      {/* Heatmaps section — preserves existing Phase 2 surface */}
-      <Section
-        title="Тепловые карты и клики"
-        subtitle="Тепловые карты по экранам, клики по hotspot'ам, низкоконфиденсные fallback'ы. Узкоэкранные стат-карточки реагируют на фильтр «Дата» (Plan 03.1-07)."
-      >
-        <div
-          style={{
-            background: 'var(--bg-page)',
-            border: '1px solid var(--border-2)',
-            borderRadius: 'var(--radius)',
-            padding: 16,
-            overflow: 'auto',
-          }}
-        >
-          {/* Plan 03.1-07 — dateRange forwarded so per-frame heatmap + time-on-frame narrow with the «Дата» filter (closes VERIFICATION.md Gap #1 / ROADMAP SC1). */}
-          <PrototypeReport studyId={studyId} dateRange={dateRange} />
-        </div>
-      </Section>
-    </article>
-  );
-}
-
-function Section({
-  title,
-  subtitle,
-  children,
-}: {
-  title: string;
-  subtitle: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <header style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <h4
-          style={{
-            font: '500 14px var(--font-sans)',
-            color: 'var(--text-1)',
-            margin: 0,
-          }}
-        >
-          {title}
-        </h4>
-        <span
-          style={{
-            font: '400 12.5px/18px var(--font-sans)',
-            color: 'var(--text-3)',
-          }}
-        >
-          {subtitle}
-        </span>
-      </header>
-      {children}
-    </section>
+        Визуальные карточки survey-блоков поставляются планом 04-04. Инфра (агрегаторы + запросы +
+        L-1 фильтрация) уже на месте.
+      </p>
+    </div>
   );
 }
 
@@ -793,7 +678,7 @@ function EmptyReportState() {
           margin: 0,
         }}
       >
-        В этом тесте пока нет prototype-блока
+        У этого теста пока нет аналитических блоков
       </h2>
       <p
         style={{
@@ -802,7 +687,8 @@ function EmptyReportState() {
           margin: '6px 0 0',
         }}
       >
-        Добавь блок «Figma-прототип» в конструкторе, чтобы появились пути и тепловые карты.
+        Добавьте блок «Figma-прототип» или любой опросный блок в конструкторе — пути, графики и
+        тепловые карты появятся здесь.
       </p>
     </div>
   );

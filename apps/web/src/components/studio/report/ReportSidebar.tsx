@@ -49,6 +49,14 @@ export interface ReportSidebarProps {
   onViewModeChange: (mode: 'aggregate' | 'responses') => void;
   /** Plan 03.1-04 — count rendered next to the «Ответы N» tab label (live, filtered). */
   responsesCount: number;
+  /**
+   * Plan 04-03 (D-97) — optional per-block response count for the sidebar
+   * block-list. Phase 4 surfaces this number next to each block row in
+   * Plan 04-04 (visual focused-report cards). 04-03 only threads the
+   * data through the interface so the wiring lands atomically with the
+   * focused-block router.
+   */
+  responseCountByBlock?: Record<string, number>;
 }
 
 export function ReportSidebar({
@@ -65,6 +73,9 @@ export function ReportSidebar({
   viewMode,
   onViewModeChange,
   responsesCount,
+  // Plan 04-04 will start reading `responseCountByBlock`; until then it
+  // stays on the interface but unrendered, so we don't destructure it
+  // here to keep ESLint's no-unused-vars happy.
 }: ReportSidebarProps) {
   // Hide pinned welcome from the block-jump list (it's not analytically
   // interesting and the handoff sidebar lists "blocks 1..N" without welcome).
