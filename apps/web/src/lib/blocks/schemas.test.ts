@@ -157,10 +157,12 @@ describe('BLOCK_REGISTRY', () => {
     expect(entry.enabledInPhase).toBe(1);
   });
 
-  it('choice ships in Phase 4 with the locked tooltip', () => {
+  it('choice is active in Phase 4 (Plan 04-01 flip) — no disabledTooltip', () => {
     const entry = BLOCK_REGISTRY['choice'];
     expect(entry.enabledInPhase).toBe(4);
-    expect(entry.disabledTooltip).toBe('Coming in Phase 4');
+    // Plan 04-01 Task 6: registry flip removes disabledTooltip for the 5
+    // Phase 4 core survey blocks (choice/scale/nps/agreement/context).
+    expect(entry.disabledTooltip).toBeUndefined();
   });
 
   it('prototype is enabled in Phase 1 (active as of Plan 02-05) with Smartphone icon', () => {

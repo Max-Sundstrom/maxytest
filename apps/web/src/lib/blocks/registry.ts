@@ -71,14 +71,14 @@ export const BLOCK_REGISTRY: Record<BlockType, BlockRegistryEntry> = {
     enabledInPhase: 1,
   },
 
-  // -- Phase 4 (survey blocks v1 + reports) ---------------------------------
+  // -- Phase 4 (survey blocks v1 core) — active as of Plan 04-01 ------------
   choice: {
     label: 'Choice',
     description: 'Single or multiple-choice question.',
     icon: ListChecks,
     category: 'survey',
     enabledInPhase: 4,
-    disabledTooltip: 'Coming in Phase 4',
+    // disabledTooltip removed — Phase 4 active (Plan 04-01 Task 6)
   },
   scale: {
     label: 'Scale',
@@ -86,7 +86,7 @@ export const BLOCK_REGISTRY: Record<BlockType, BlockRegistryEntry> = {
     icon: BarChart3,
     category: 'survey',
     enabledInPhase: 4,
-    disabledTooltip: 'Coming in Phase 4',
+    // disabledTooltip removed — Phase 4 active (Plan 04-01 Task 6)
   },
   nps: {
     label: 'NPS',
@@ -94,7 +94,7 @@ export const BLOCK_REGISTRY: Record<BlockType, BlockRegistryEntry> = {
     icon: Activity,
     category: 'survey',
     enabledInPhase: 4,
-    disabledTooltip: 'Coming in Phase 4',
+    // disabledTooltip removed — Phase 4 active (Plan 04-01 Task 6)
   },
   agreement: {
     label: 'Agreement',
@@ -102,7 +102,7 @@ export const BLOCK_REGISTRY: Record<BlockType, BlockRegistryEntry> = {
     icon: FileCheck,
     category: 'survey',
     enabledInPhase: 4,
-    disabledTooltip: 'Coming in Phase 4',
+    // disabledTooltip removed — Phase 4 active (Plan 04-01 Task 6)
   },
   context: {
     label: 'Context',
@@ -110,7 +110,7 @@ export const BLOCK_REGISTRY: Record<BlockType, BlockRegistryEntry> = {
     icon: User,
     category: 'survey',
     enabledInPhase: 4,
-    disabledTooltip: 'Coming in Phase 4',
+    // disabledTooltip removed — Phase 4 active (Plan 04-01 Task 6)
   },
   matrix: {
     label: 'Matrix',
