@@ -45,7 +45,7 @@ export type Phase1BlockType = 'welcome' | 'open_question' | 'thanks';
  * The DB CHECK constraint on `public.blocks.type` is widened in tandem by
  * `supabase/migrations/00008_phase2_blocks_prototype_type.sql`. Phase1BlockType
  * is preserved as a historical reference but the `Block.type` field below
- * points at `Phase2BlockType` so downstream call sites narrow correctly.
+ * points at `Phase4BlockType` so downstream call sites narrow correctly.
  *
  * RESEARCH.md Pitfall 12 — DB and TS move together; widening the TS alias
  * without widening the CHECK constraint (or vice versa) would create a
@@ -53,11 +53,32 @@ export type Phase1BlockType = 'welcome' | 'open_question' | 'thanks';
  */
 export type Phase2BlockType = Phase1BlockType | 'prototype';
 
+/**
+ * Phase 4: extended to include the 5 core survey-blocks-v1 types
+ * (BLK-04..BLK-08): `choice`, `scale`, `nps`, `agreement`, `context`.
+ *
+ * The DB CHECK constraint on `public.blocks.type` is widened in tandem by
+ * `supabase/migrations/00016_phase4_blocks_type_check.sql`. Phase 2 / Phase 1
+ * ladder types are preserved as historical references for narrowing
+ * readability (e.g. `block.type === 'welcome'` still satisfies
+ * `Phase1BlockType`).
+ *
+ * Plan 04-01 Task 2 — see
+ * `.planning/phases/04-survey-blocks-v1-survey-analytics-reports-public-sharing/04-01-PLAN.md`.
+ */
+export type Phase4BlockType =
+  | Phase2BlockType
+  | 'choice'
+  | 'scale'
+  | 'nps'
+  | 'agreement'
+  | 'context';
+
 export interface Block {
   id: string;
   study_id: string;
   position: number;
-  type: Phase2BlockType;
+  type: Phase4BlockType;
   /** welcome/thanks have pinned=true → cannot be moved or deleted (D-11). */
   pinned: boolean;
   /** Discriminated by `type`; validated via `blockContentSchema`. */
