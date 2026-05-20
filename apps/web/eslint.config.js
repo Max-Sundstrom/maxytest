@@ -18,6 +18,12 @@
 // Phase 2 (Plan 02-01): extended runner-tree glob to cover PrototypeViewer/,
 // lib/queries/events.ts, lib/queries/prototypes-runner.ts (W-06), lib/runner/.
 // See RESEARCH.md Pitfall 6 — explicit Wave 1 task, never bundle later.
+//
+// Phase 4 (Plan 04-07): extended the same glob to cover the public-share
+// surface — components/public/** (PublicReportShell) + the matching route
+// files _public.share.$token.tsx + _public.share.gone.tsx are already
+// covered by the existing _public.** glob, but components/public/** is a
+// NEW tree introduced in 04-07 that must respect the anon-tier boundary.
 
 import rootConfig from '../../eslint.config.js';
 import tseslint from 'typescript-eslint';
@@ -32,6 +38,8 @@ export default tseslint.config(
       'src/routes/_public/**',
       'src/components/runner/**',
       'src/components/runner/blocks/PrototypeViewer/**',
+      // Phase 4 (Plan 04-07): public-share component tree.
+      'src/components/public/**',
       'src/lib/queries/sessions.ts',
       'src/lib/queries/responses.ts',
       'src/lib/queries/events.ts',
@@ -47,7 +55,7 @@ export default tseslint.config(
             {
               name: '@/lib/supabase/auth',
               message:
-                'Runner code must use supabaseAnon from @/lib/supabase/anon, never the designer auth client. See RESEARCH.md Anti-Pattern 5.',
+                'Runner / public-share code must use supabaseAnon from @/lib/supabase/anon, never the designer auth client. See RESEARCH.md Anti-Pattern 5.',
             },
           ],
         },

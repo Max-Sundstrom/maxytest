@@ -1,0 +1,22 @@
+# Phase 4 / Plan 04-07 / REPORT-06 — Cloudflare Pages routing.
+#
+# /share/* is forwarded first-hit through the Supabase Edge Function
+# `og-share-card`. The function does User-Agent-based routing:
+#   - Bot UA  -> 200 + minimal OG-meta HTML + x-robots-tag: noindex,nofollow.
+#   - Human UA -> 302 redirect to /share/<token>?fallback=1, which lands on
+#                 the SPA index.html and TanStack Router takes over.
+#
+# IMPORTANT — replace <project-ref> before the production deploy. The value
+# is your Supabase project reference id (Dashboard -> Project Settings ->
+# General -> Reference ID). Plan 04-07 Task 8 (human checkpoint) walks the
+# designer through swapping the literal token.
+#
+# Until the project-ref is filled in, this rule is a NO-OP (Cloudflare
+# Pages rejects rules with a literal '<' in the destination URL). The SPA
+# fallback below still ships, so the designer's testing flow continues to
+# work locally without the OG card.
+
+/share/*  https://<project-ref>.functions.supabase.co/og-share-card/:splat  200
+
+# SPA fallback for every other path — TanStack Router resolves client-side.
+/*  /index.html  200
