@@ -539,6 +539,14 @@ export function ReportShell({ studyId }: ReportShellProps) {
         studyId={studyId}
         blockCount={Math.max(0, blocks.length)}
         responseCount={stats.responses}
+        blocks={blocks}
+        sessions={sessions}
+        surveyResponses={surveyResponsesAll}
+        outcomes={outcomes}
+        filtersActive={filtersActive}
+        prototypeVersionId={pvId}
+        prototypeBlockId={prototypeBlock?.id}
+        finishFrameIds={finishFrameIds}
       />
 
       <div
