@@ -54,11 +54,19 @@ export interface SurveyResponseRow {
   submitted_at: string;
 }
 
+/**
+ * Plan 04-05 Task 3 — extend with optional `opts.enabled` so consumers
+ * (CsvDownloadButton) can gate the unfiltered-dataset round-trip behind a
+ * dialog-open boolean. Backwards-compat: when omitted, behavior matches the
+ * pre-04-05 contract — the hook auto-enables on `!!studyId && blockIds.length > 0`.
+ */
 export function useSurveyResponses(
   studyId: string | null | undefined,
   blockIds: readonly string[],
   dateRange?: DateRange,
+  opts?: { enabled?: boolean },
 ) {
+  const callerEnabled = opts?.enabled ?? true;
   return useQuery({
     queryKey: [
       'survey-responses',
@@ -67,7 +75,7 @@ export function useSurveyResponses(
       dateRange?.startISO ?? null,
       dateRange?.endISO ?? null,
     ] as const,
-    enabled: !!studyId && blockIds.length > 0,
+    enabled: callerEnabled && !!studyId && blockIds.length > 0,
     staleTime: 30_000,
     queryFn: async (): Promise<SurveyResponseRow[]> => {
       // `responses` rows live behind RLS that filters via the sessions →

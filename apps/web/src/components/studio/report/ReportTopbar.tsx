@@ -13,22 +13,60 @@
  * with /app and /studies/$id/edit holds.
  */
 
-import { Download, Share2 } from 'lucide-react';
+import { Share2 } from 'lucide-react';
 import { useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import { MLogo } from '@/components/shared/MLogo';
 import { UserAvatarMenu } from '@/components/shared/UserAvatarMenu';
 import { useStudy } from '@/lib/queries/studies';
+import { CsvDownloadButton } from './CsvDownloadButton';
+import type { Block } from '@/lib/blocks/types';
+import type { DesignerSession } from '@/lib/queries/designer-sessions';
+import type { SurveyResponseRow } from '@/lib/queries/survey-responses';
+import type { ClassifyOutcomeResult } from '@/lib/analytics/classify-outcome';
 
 type LooseNavigate = (opts: { to: string; params?: Record<string, string> }) => unknown;
 
+/**
+ * Plan 04-05 Task 4 — extended to host <CsvDownloadButton />.
+ *
+ * The CSV button needs current-view data (filtered) to download immediately
+ * when filters are inactive; ReportShell already has it all in scope so we
+ * thread it through as props rather than re-fetch inside the topbar. The
+ * dialog inside CsvDownloadButton lazily fetches the unfiltered counterpart
+ * only when the designer triggers «Скачать всё» — M-1 closure.
+ *
+ * The «Поделиться отчётом» share button slot stays as the existing
+ * placeholder; Plan 04-06 fills it in with the real share-token UX.
+ */
 export interface ReportTopbarProps {
   studyId: string;
   blockCount: number;
   responseCount: number;
+  // Plan 04-05 Task 4 — CSV export pass-through.
+  blocks: readonly Block[];
+  sessions: readonly DesignerSession[]; // filtered
+  surveyResponses: readonly SurveyResponseRow[]; // filtered
+  outcomes: readonly ClassifyOutcomeResult[]; // filtered
+  filtersActive: boolean;
+  prototypeVersionId: string | null | undefined;
+  prototypeBlockId: string | null | undefined;
+  finishFrameIds: readonly string[];
 }
 
-export function ReportTopbar({ studyId, blockCount, responseCount }: ReportTopbarProps) {
+export function ReportTopbar({
+  studyId,
+  blockCount,
+  responseCount,
+  blocks,
+  sessions,
+  surveyResponses,
+  outcomes,
+  filtersActive,
+  prototypeVersionId,
+  prototypeBlockId,
+  finishFrameIds,
+}: ReportTopbarProps) {
   const studyQuery = useStudy(studyId);
   const study = studyQuery.data;
   const navigate = useNavigate() as unknown as LooseNavigate;
@@ -105,12 +143,23 @@ export function ReportTopbar({ studyId, blockCount, responseCount }: ReportTopba
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <IconBtn aria-label="Скачать отчёт" onClick={() => toast.info('Экспорт CSV — Phase 4.')}>
-            <Download size={15} strokeWidth={1.5} />
-          </IconBtn>
+          <CsvDownloadButton
+            studyId={studyId}
+            studyTitle={study?.title ?? 'Untitled test'}
+            blocks={blocks}
+            sessions={sessions}
+            surveyResponses={surveyResponses}
+            outcomes={outcomes}
+            filtersActive={filtersActive}
+            prototypeVersionId={prototypeVersionId}
+            prototypeBlockId={prototypeBlockId}
+            finishFrameIds={finishFrameIds}
+          />
+          {/* «Поделиться отчётом» — Plan 04-06 ships the real share button.
+              Until then the placeholder icon-button stays so the slot exists. */}
           <IconBtn
             aria-label="Поделиться публичной ссылкой"
-            onClick={() => toast.info('Публичные ссылки отчёта — Phase 4.')}
+            onClick={() => toast.info('Публичные ссылки отчёта — Plan 04-06.')}
           >
             <Share2 size={15} strokeWidth={1.5} />
           </IconBtn>

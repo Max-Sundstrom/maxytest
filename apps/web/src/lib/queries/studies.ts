@@ -27,6 +27,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { uuidv7 } from 'uuidv7';
 import { supabase } from '@/lib/supabase/auth';
 import type { Database } from '@/lib/supabase/types.gen';
 import { ValidationError } from '@/lib/queries/errors';
@@ -347,6 +348,67 @@ export function useArchiveStudy() {
     },
     onError: () => {
       toast.error("Couldn't archive. Try again in a moment.");
+    },
+  });
+}
+
+// ===========================================================================
+// Plan 04-05 Task 6: duplicate_study mutation hook (TESTMGMT-04)
+// ===========================================================================
+
+/**
+ * `useDuplicateStudy` — calls migration 00017's `duplicate_study` RPC.
+ *
+ * Designer clicks «Дублировать» in /studies row hover-menu (Task 7) OR in the
+ * builder topbar kebab (Task 7). Either entry point invokes the same hook:
+ *
+ *   const dup = useDuplicateStudy();
+ *   const newId = await dup.mutateAsync({ studyId, newTitle? });
+ *   navigate({ to: '/studies/$id/edit', params: { id: newId } });
+ *
+ * Idempotency key generated locally via `uuidv7()` — same pattern as
+ * blocks.ts' insert/update/duplicate mutations. Rapid double-clicks on the
+ * action menu produce ONE duplicate at the server level (00017 audit table
+ * dedupes via UNIQUE(study_id, idempotency_key)) AND the disabled-state on
+ * the menu item prevents the second click at the UI level.
+ *
+ * On success: invalidate `['studies']` so the home list refetches the new
+ * copy. The list is partitioned by workspace_id internally but the
+ * invalidation is by top-level key so all workspace partitions refresh.
+ *
+ * On error: rethrow. The caller wires `mutation.onError` to surface a
+ * toast / alert (Task 7).
+ *
+ * RPC return type: the migration 00017 signature is
+ *   `duplicate_study(p_study_id uuid, p_new_title text, p_idempotency_key uuid) RETURNS uuid`
+ * — when called via `.rpc(...)`, supabase-js gives us `data: string | null`.
+ * We cast through `as never` because the regenerated types.gen.ts won't
+ * include 00017's RPC until the orchestrator runs `gen-types` post-merge
+ * (mirrors the pattern Phase 1 publish/archive RPCs use).
+ */
+export function useDuplicateStudy() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { studyId: string; newTitle?: string }): Promise<string> => {
+      const { data, error } = await supabase.rpc(
+        'duplicate_study' as never,
+        {
+          p_study_id: input.studyId,
+          p_new_title: input.newTitle ?? null,
+          p_idempotency_key: uuidv7(),
+        } as never,
+      );
+      if (error) throw error;
+      // `data` is typed `never` until types.gen.ts is regenerated post-merge;
+      // narrow via runtime structural check.
+      const id = data as unknown;
+      if (typeof id !== 'string' || id.length === 0) {
+        throw new Error('duplicate_study returned no id');
+      }
+      return id;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['studies'] });
     },
   });
 }
