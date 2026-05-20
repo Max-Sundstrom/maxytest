@@ -59,6 +59,10 @@ export interface ReportSidebarProps {
   responseCountByBlock?: Record<string, number>;
 }
 
+// Block types hidden from the report block-list per D-96 (welcome / thanks
+// are pinned chrome; agreement is a consent gate, not an analytical block).
+const HIDDEN_FROM_BLOCK_LIST: ReadonlySet<string> = new Set(['welcome', 'thanks', 'agreement']);
+
 export function ReportSidebar({
   blocks,
   activeBlockId,
@@ -73,13 +77,13 @@ export function ReportSidebar({
   viewMode,
   onViewModeChange,
   responsesCount,
-  // Plan 04-04 will start reading `responseCountByBlock`; until then it
-  // stays on the interface but unrendered, so we don't destructure it
-  // here to keep ESLint's no-unused-vars happy.
+  responseCountByBlock,
 }: ReportSidebarProps) {
-  // Hide pinned welcome from the block-jump list (it's not analytically
-  // interesting and the handoff sidebar lists "blocks 1..N" without welcome).
-  const reportableBlocks = blocks.filter((b) => b.type !== 'welcome');
+  // Plan 04-04 D-96 — block-list visibility. Welcome/thanks/agreement are
+  // hidden so the sidebar surfaces only analytical blocks. Defensive: if
+  // ReportShell passes pre-filtered `blocks` we still apply the filter so
+  // the contract holds regardless of upstream wiring.
+  const visibleBlocks = blocks.filter((b) => !HIDDEN_FROM_BLOCK_LIST.has(b.type));
 
   return (
     <aside
@@ -90,7 +94,7 @@ export function ReportSidebar({
         display: 'flex',
         flexDirection: 'column',
         gap: 20,
-        overflow: 'auto',
+        overflow: 'hidden',
         minHeight: 0,
       }}
     >
@@ -134,74 +138,115 @@ export function ReportSidebar({
         </PillTab>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {reportableBlocks.map((block, i) => {
-          const visual = blockVisualOf(block.type);
-          const ChipIcon = visual.icon;
-          const active = block.id === activeBlockId;
-          const blockTitle =
-            (block.content as { title?: string; question?: string }).title?.toString().trim() ||
-            (block.content as { title?: string; question?: string }).question?.toString().trim() ||
-            'Без названия';
+      {/* Plan 04-04 D-99 — block-list is the only sticky-scrolling region.
+          Filters above stay pinned. The wrapper has `flex: 1` + `minHeight: 0`
+          so the sidebar shrinks predictably under tall tests (15+ blocks). */}
+      <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+        {visibleBlocks.length === 0 ? (
+          <p
+            style={{
+              font: '400 13px/20px var(--font-sans)',
+              color: 'var(--text-3)',
+              margin: 0,
+              padding: '8px 4px',
+            }}
+          >
+            В тесте нет аналитических блоков. Добавьте choice / scale / nps / context в
+            конструкторе.
+          </p>
+        ) : (
+          <ul
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 4,
+              margin: 0,
+              padding: 0,
+              listStyle: 'none',
+            }}
+          >
+            {visibleBlocks.map((block, i) => {
+              const visual = blockVisualOf(block.type);
+              const ChipIcon = visual.icon;
+              const active = block.id === activeBlockId;
+              const blockTitle =
+                (block.content as { title?: string; question?: string }).title?.toString().trim() ||
+                (block.content as { title?: string; question?: string }).question
+                  ?.toString()
+                  .trim() ||
+                'Без названия';
+              const count = responseCountByBlock?.[block.id] ?? 0;
 
-          return (
-            <button
-              key={block.id}
-              type="button"
-              onClick={() => onSelectBlock(block.id)}
-              style={{
-                width: '100%',
-                height: 32,
-                display: 'grid',
-                gridTemplateColumns: '20px 1fr',
-                gap: 8,
-                alignItems: 'center',
-                padding: '0 10px',
-                background: active ? 'var(--bg-card)' : 'transparent',
-                border: `1px solid ${active ? 'var(--color-accent)' : 'transparent'}`,
-                borderRadius: 'var(--radius)',
-                cursor: 'pointer',
-                boxShadow: active ? 'var(--shadow-card)' : 'none',
-                font: '400 13px/16px var(--font-sans)',
-                color: 'var(--text-1)',
-                textAlign: 'left',
-                transition: 'background 120ms cubic-bezier(.2,.7,.3,1)',
-              }}
-              onMouseEnter={(e) => {
-                if (!active) e.currentTarget.style.background = 'var(--bg-card)';
-              }}
-              onMouseLeave={(e) => {
-                if (!active) e.currentTarget.style.background = 'transparent';
-              }}
-            >
-              <span
-                aria-hidden="true"
-                style={{
-                  width: 20,
-                  height: 20,
-                  borderRadius: 'var(--radius-sm)',
-                  background: visual.chipBg,
-                  color: visual.chipFg,
-                  display: 'grid',
-                  placeItems: 'center',
-                  flexShrink: 0,
-                }}
-              >
-                <ChipIcon size={11} strokeWidth={1.5} />
-              </span>
-              <span
-                style={{
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                <span style={{ color: 'var(--text-3)', marginRight: 6 }}>{i + 1}.</span>
-                {blockTitle}
-              </span>
-            </button>
-          );
-        })}
+              return (
+                <li key={block.id}>
+                  <button
+                    type="button"
+                    onClick={() => onSelectBlock(block.id)}
+                    style={{
+                      width: '100%',
+                      height: 32,
+                      display: 'grid',
+                      gridTemplateColumns: '20px 1fr auto',
+                      gap: 8,
+                      alignItems: 'center',
+                      padding: '0 10px',
+                      background: active ? 'var(--bg-card)' : 'transparent',
+                      border: `1px solid ${active ? 'var(--color-accent)' : 'transparent'}`,
+                      borderRadius: 'var(--radius)',
+                      cursor: 'pointer',
+                      boxShadow: active ? 'var(--shadow-card)' : 'none',
+                      font: '400 13px/16px var(--font-sans)',
+                      color: 'var(--text-1)',
+                      textAlign: 'left',
+                      transition: 'background 120ms cubic-bezier(.2,.7,.3,1)',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!active) e.currentTarget.style.background = 'var(--bg-card)';
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!active) e.currentTarget.style.background = 'transparent';
+                    }}
+                  >
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        width: 20,
+                        height: 20,
+                        borderRadius: 'var(--radius-sm)',
+                        background: visual.chipBg,
+                        color: visual.chipFg,
+                        display: 'grid',
+                        placeItems: 'center',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <ChipIcon size={11} strokeWidth={1.5} />
+                    </span>
+                    <span
+                      style={{
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      <span style={{ color: 'var(--text-3)', marginRight: 6 }}>{i + 1}.</span>
+                      {blockTitle}
+                    </span>
+                    <span
+                      style={{
+                        font: '400 12px var(--font-mono)',
+                        color: 'var(--text-3)',
+                      }}
+                      aria-label={`Ответов: ${count}`}
+                    >
+                      {count}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
     </aside>
   );
