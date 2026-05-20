@@ -34,6 +34,18 @@ import { WelcomeRunner } from './blocks/WelcomeRunner';
 import { OpenQuestionRunner } from './blocks/OpenQuestionRunner';
 import { ThanksRunner } from './blocks/ThanksRunner';
 import { PrototypeRunner } from './blocks/PrototypeRunner';
+import { ChoiceRunner } from './blocks/ChoiceRunner';
+import { ScaleRunner } from './blocks/ScaleRunner';
+import { NpsRunner } from './blocks/NpsRunner';
+import { AgreementRunner } from './blocks/AgreementRunner';
+import { ContextRunner } from './blocks/ContextRunner';
+import type {
+  ChoiceAnswer,
+  ScaleAnswer,
+  NpsAnswer,
+  AgreementAnswer,
+  ContextAnswer,
+} from '@/lib/blocks/schemas';
 
 export type RunnerMode = 'live' | 'preview';
 
@@ -302,6 +314,67 @@ function RunnerShellInner({
             block={currentBlock}
             sessionId={sessionId ?? null}
             onComplete={() => handleBlockAdvance(currentBlock.id)}
+          />
+        )}
+        {currentBlock.type === 'choice' && (
+          <ChoiceRunner
+            block={currentBlock}
+            questionIndex={Math.max(0, questionIndex)}
+            questionTotal={Math.max(1, questionTotal)}
+            isFirst={isFirstQuestion}
+            isLast={isLastQuestion}
+            sessionId={sessionId ?? null}
+            onSubmit={(answer: ChoiceAnswer) => handleQuestionSubmit(answer)}
+            onBack={handleBack}
+            initialValue={answers[currentBlock.id]?.content as ChoiceAnswer | undefined}
+          />
+        )}
+        {currentBlock.type === 'scale' && (
+          <ScaleRunner
+            block={currentBlock}
+            questionIndex={Math.max(0, questionIndex)}
+            questionTotal={Math.max(1, questionTotal)}
+            isFirst={isFirstQuestion}
+            isLast={isLastQuestion}
+            onSubmit={(answer: Partial<ScaleAnswer>) => handleQuestionSubmit(answer)}
+            onBack={handleBack}
+            initialValue={answers[currentBlock.id]?.content as Partial<ScaleAnswer> | undefined}
+          />
+        )}
+        {currentBlock.type === 'nps' && (
+          <NpsRunner
+            block={currentBlock}
+            questionIndex={Math.max(0, questionIndex)}
+            questionTotal={Math.max(1, questionTotal)}
+            isFirst={isFirstQuestion}
+            isLast={isLastQuestion}
+            onSubmit={(answer: Partial<NpsAnswer>) => handleQuestionSubmit(answer)}
+            onBack={handleBack}
+            initialValue={answers[currentBlock.id]?.content as Partial<NpsAnswer> | undefined}
+          />
+        )}
+        {currentBlock.type === 'agreement' && (
+          <AgreementRunner
+            block={currentBlock}
+            questionIndex={Math.max(0, questionIndex)}
+            questionTotal={Math.max(1, questionTotal)}
+            isFirst={isFirstQuestion}
+            isLast={isLastQuestion}
+            onSubmit={(answer: AgreementAnswer) => handleQuestionSubmit(answer)}
+            onBack={handleBack}
+            initialValue={answers[currentBlock.id]?.content as AgreementAnswer | undefined}
+          />
+        )}
+        {currentBlock.type === 'context' && (
+          <ContextRunner
+            block={currentBlock}
+            questionIndex={Math.max(0, questionIndex)}
+            questionTotal={Math.max(1, questionTotal)}
+            isFirst={isFirstQuestion}
+            isLast={isLastQuestion}
+            onSubmit={(answer: ContextAnswer) => handleQuestionSubmit(answer)}
+            onBack={handleBack}
+            initialValue={answers[currentBlock.id]?.content as ContextAnswer | undefined}
           />
         )}
         {currentBlock.type === 'thanks' && (
