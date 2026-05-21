@@ -22,6 +22,14 @@ interface UiState {
   catalogPanelOpen: boolean;
   setCatalogPanelOpen: (value: boolean) => void;
 
+  /**
+   * Position the next "Add block" should occupy. `null` falls back to the
+   * default behaviour (insert before thanks). Set by inline `+` buttons
+   * between BlockCards so the catalog inserts at that exact slot.
+   */
+  catalogInsertPosition: number | null;
+  setCatalogInsertPosition: (value: number | null) => void;
+
   /** D-12: full-screen preview overlay. */
   previewOverlayOpen: boolean;
   setPreviewOverlayOpen: (value: boolean) => void;
@@ -42,7 +50,16 @@ export const useUiStore = create<UiState>()(
       setSidebarCollapsed: (value) => set({ sidebarCollapsed: value }),
 
       catalogPanelOpen: false,
-      setCatalogPanelOpen: (value) => set({ catalogPanelOpen: value }),
+      setCatalogPanelOpen: (value) =>
+        set((state) => ({
+          catalogPanelOpen: value,
+          // Reset forced position whenever the panel closes — next open
+          // without an explicit position falls back to "before thanks".
+          catalogInsertPosition: value ? state.catalogInsertPosition : null,
+        })),
+
+      catalogInsertPosition: null,
+      setCatalogInsertPosition: (value) => set({ catalogInsertPosition: value }),
 
       previewOverlayOpen: false,
       setPreviewOverlayOpen: (value) => set({ previewOverlayOpen: value }),
