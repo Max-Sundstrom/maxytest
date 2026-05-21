@@ -4,11 +4,13 @@
  *
  *   ───────────── [+] ─────────────
  *
- * - Hidden by default (opacity 0); the row reserves a fixed 24px height
- *   so the sliver appearing/disappearing never shifts layout (no cursor
- *   jitter — pure opacity transition).
- * - On hover in the gap-zone (or keyboard focus): button fades to full
- *   moss accent over 120ms.
+ * - Idle: 4px tall sliver — barely a gap, no visible button. Gives the
+ *   user a slim hover target between rows.
+ * - On hover (or keyboard focus): the sliver expands to 28px AND its
+ *   button fades in — neighbouring rows physically slide apart to make
+ *   room for the new "Add block" affordance.
+ * - Height transition is 120ms cubic-bezier; matches design-system v1
+ *   motion easing so the slide feels integrated with the rest of the UI.
  * - Click sets `useUiStore.catalogInsertPosition = position` and opens
  *   the catalog drawer. The chosen block lands at that exact slot.
  *
@@ -58,11 +60,20 @@ export function InsertRowButton({ position, afterLabel }: InsertRowButtonProps) 
       // outer li prevents screen readers from announcing the visual
       // separator twice — the inner <button> still gets the aria-label.
       aria-hidden="false"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
         listStyle: 'none',
-        height: 24,
+        // Idle 4px sliver = barely a gap; expands to 28px on hover so
+        // adjacent rows slide apart and the button fits inside. The 4px
+        // idle height is intentional: 0 would have no hover target, but
+        // 4px is enough for the cursor to reliably land on between two
+        // 32px-tall BlockSidebarRow neighbours.
+        height: hovered ? 28 : 4,
         margin: 0,
         padding: 0,
+        overflow: 'hidden',
+        transition: 'height 120ms cubic-bezier(.2,.7,.3,1)',
       }}
     >
       <button
@@ -72,13 +83,11 @@ export function InsertRowButton({ position, afterLabel }: InsertRowButtonProps) 
           setPosition(position);
           setOpen(true);
         }}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
         onFocus={() => setHovered(true)}
         onBlur={() => setHovered(false)}
         style={{
           width: '100%',
-          height: '100%',
+          height: 28,
           padding: '0 8px',
           background: 'transparent',
           border: 0,
@@ -87,10 +96,11 @@ export function InsertRowButton({ position, afterLabel }: InsertRowButtonProps) 
           gridTemplateColumns: '1fr auto 1fr',
           alignItems: 'center',
           gap: 8,
-          // Hidden by default — only reveals when the user hovers the
-          // 24px sliver between two rows (or tabs to it via keyboard).
-          // The <li> keeps its 24px height regardless of opacity, so the
-          // sidebar list never shifts when slivers appear / disappear.
+          // The button itself is always 28px tall, but it lives inside a
+          // <li> that's 4px (idle) → 28px (hover) with overflow:hidden, so
+          // visually the button is hidden until the parent expands. The
+          // opacity fade gives the icon/lines a soft entrance even after
+          // the height transition lands.
           opacity: hovered ? 1 : 0,
           transition:
             'opacity 120ms cubic-bezier(.2,.7,.3,1), color 120ms cubic-bezier(.2,.7,.3,1)',
