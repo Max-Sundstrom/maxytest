@@ -14,6 +14,7 @@
  * announcements. Pinned welcome/thanks are non-sortable per D-11.
  */
 
+import { Fragment } from 'react';
 import {
   DndContext,
   KeyboardSensor,
@@ -36,6 +37,7 @@ import { useDeleteBlock, useDuplicateBlock, useReorderBlocks } from '@/lib/queri
 import { useBuilderStore } from '@/lib/stores/builder';
 import { useUiStore } from '@/lib/stores/ui';
 import { BlockSidebarRow } from './BlockSidebarRow';
+import { InsertRowButton } from './InsertRowButton';
 
 export interface BuilderSidebarProps {
   studyId: string;
@@ -175,24 +177,46 @@ export function BuilderSidebar({ studyId, workspaceId }: BuilderSidebarProps) {
               />
             ))}
 
+          {/*
+            Insert-row sliver between Welcome and the first sortable row.
+            position=1 means "insert at slot 1" — welcome stays at 0, the
+            new block becomes 1, and all existing unpinned blocks shift
+            by +1. Rendered OUTSIDE the SortableContext because welcome
+            is also outside it. dnd-kit only tracks the items[] array, so
+            this sibling is harmless.
+          */}
+          <InsertRowButton position={1} afterLabel="Welcome" />
+
           <SortableContext items={unpinnedIds} strategy={verticalListSortingStrategy}>
-            {unpinned.map((b) => {
+            {unpinned.map((b, subIdx) => {
               const fullIdx = blocks.findIndex((x) => x.id === b.id);
-              const subIdx = unpinnedIds.indexOf(b.id);
+              const afterLabel =
+                (b.content as { title?: string; question?: string }).title?.toString().trim() ||
+                (b.content as { title?: string; question?: string }).question?.toString().trim() ||
+                BLOCK_REGISTRY[b.type]?.label ||
+                b.type;
+              // Sliver AFTER this row: position = subIdx + 2 (because
+              // welcome=0, unpinned[0]=1, so after unpinned[0] insert
+              // goes at position 2). For the last unpinned the sliver
+              // value equals thanksIdx — clamped safely by
+              // BlockCatalogPanel's [1, thanksIdx] guard.
+              const sliverPositionAfter = subIdx + 2;
               return (
-                <BlockSidebarRow
-                  key={b.id}
-                  block={b}
-                  index={fullIdx}
-                  isActive={selectedBlockId === b.id}
-                  canMoveUp={subIdx > 0}
-                  canMoveDown={subIdx < unpinnedIds.length - 1}
-                  onMoveUp={() => handleMoveUp(b.id)}
-                  onMoveDown={() => handleMoveDown(b.id)}
-                  onDuplicate={() => duplicateMutation.mutate({ blockId: b.id })}
-                  onDelete={() => deleteMutation.mutate({ blockId: b.id })}
-                  onSelect={() => setSelectedBlockId(b.id)}
-                />
+                <Fragment key={b.id}>
+                  <BlockSidebarRow
+                    block={b}
+                    index={fullIdx}
+                    isActive={selectedBlockId === b.id}
+                    canMoveUp={subIdx > 0}
+                    canMoveDown={subIdx < unpinnedIds.length - 1}
+                    onMoveUp={() => handleMoveUp(b.id)}
+                    onMoveDown={() => handleMoveDown(b.id)}
+                    onDuplicate={() => duplicateMutation.mutate({ blockId: b.id })}
+                    onDelete={() => deleteMutation.mutate({ blockId: b.id })}
+                    onSelect={() => setSelectedBlockId(b.id)}
+                  />
+                  <InsertRowButton position={sliverPositionAfter} afterLabel={afterLabel} />
+                </Fragment>
               );
             })}
           </SortableContext>
