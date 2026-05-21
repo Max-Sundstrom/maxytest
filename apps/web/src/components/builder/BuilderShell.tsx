@@ -13,7 +13,7 @@
  * Old WorkspaceTopBar is gone — this shell now owns its top chrome.
  */
 
-import { useEffect } from 'react';
+import { Fragment, useEffect } from 'react';
 import { HelpCircle, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { useBlocks } from '@/lib/queries/blocks';
@@ -27,6 +27,8 @@ import { BuilderTopbar } from './BuilderTopbar';
 import { BuilderSidebar } from './BuilderSidebar';
 import { BlockCard } from './BlockCard';
 import { BlockCatalogPanel } from './BlockCatalogPanel';
+import { InsertBlockButton } from './InsertBlockButton';
+import { BLOCK_REGISTRY } from '@/lib/blocks/registry';
 import { MobileBuilderBlocked } from './MobileBuilderBlocked';
 import { PreviewOverlay } from './PreviewOverlay';
 
@@ -106,15 +108,31 @@ export function BuilderShell({ studyId }: BuilderShellProps) {
             </>
           ) : (
             <>
-              {blocks.map((block, index) => (
-                <BlockCard
-                  key={block.id}
-                  block={block}
-                  index={index}
-                  studyId={studyId}
-                  workspaceId={workspace.id}
-                />
-              ))}
+              {blocks.map((block, index) => {
+                // Insert-slot lives BEFORE this card — adds a new block at
+                // `index`, pushing this card and everything below by +1.
+                // Skip the slot above welcome (index 0): welcome is pinned
+                // at position 0 and nothing can come before it. Every other
+                // gap (including the one between the last question and
+                // thanks) gets a "+" inline button.
+                const previousBlock = index > 0 ? blocks[index - 1] : null;
+                const afterLabel = previousBlock
+                  ? (BLOCK_REGISTRY[previousBlock.type]?.label ?? previousBlock.type)
+                  : '';
+                return (
+                  <Fragment key={block.id}>
+                    {previousBlock !== null ? (
+                      <InsertBlockButton position={index} afterLabel={afterLabel} />
+                    ) : null}
+                    <BlockCard
+                      block={block}
+                      index={index}
+                      studyId={studyId}
+                      workspaceId={workspace.id}
+                    />
+                  </Fragment>
+                );
+              })}
               <button
                 type="button"
                 onClick={() => setCatalogPanelOpen(true)}
