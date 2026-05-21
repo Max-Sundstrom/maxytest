@@ -4,10 +4,11 @@
  *
  *   ───────────── [+] ─────────────
  *
- * - Always visible at low opacity so the click target is discoverable
- *   without hover (no layout-shift / cursor jitter — the row's height is
- *   fixed at 24px and never collapses).
- * - On hover: lines + icon transition to the moss accent.
+ * - Hidden by default (opacity 0); the row reserves a fixed 24px height
+ *   so the sliver appearing/disappearing never shifts layout (no cursor
+ *   jitter — pure opacity transition).
+ * - On hover in the gap-zone (or keyboard focus): button fades to full
+ *   moss accent over 120ms.
  * - Click sets `useUiStore.catalogInsertPosition = position` and opens
  *   the catalog drawer. The chosen block lands at that exact slot.
  *
@@ -86,10 +87,11 @@ export function InsertRowButton({ position, afterLabel }: InsertRowButtonProps) 
           gridTemplateColumns: '1fr auto 1fr',
           alignItems: 'center',
           gap: 8,
-          // Subtle by default — fades in on row-strip hover (the parent
-          // <ul> doesn't currently track hover, so we keep base opacity
-          // visible enough for discoverability without being noisy).
-          opacity: hovered ? 1 : 0.55,
+          // Hidden by default — only reveals when the user hovers the
+          // 24px sliver between two rows (or tabs to it via keyboard).
+          // The <li> keeps its 24px height regardless of opacity, so the
+          // sidebar list never shifts when slivers appear / disappear.
+          opacity: hovered ? 1 : 0,
           transition:
             'opacity 120ms cubic-bezier(.2,.7,.3,1), color 120ms cubic-bezier(.2,.7,.3,1)',
         }}
