@@ -18,7 +18,7 @@
 
 import { useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
-import { ArrowRight, ChevronLeft } from 'lucide-react';
+import { ArrowRight, Check, ChevronLeft } from 'lucide-react';
 import type { Block } from '@/lib/blocks/types';
 import type { AgreementAnswer, AgreementContent } from '@/lib/blocks/schemas';
 
@@ -191,18 +191,58 @@ export function AgreementRunner({
               'background 120ms cubic-bezier(.2,.7,.3,1), border-color 120ms cubic-bezier(.2,.7,.3,1)',
           }}
         >
-          <input
-            type="checkbox"
-            checked={agreed}
-            onChange={(e) => form.setValue('agreed', e.target.checked, { shouldDirty: true })}
+          {/*
+            Accessible-pattern: native <input type="checkbox"> stays in
+            DOM (visually hidden) so keyboard, screen-readers, and form
+            integration work as expected. The custom <span> next to it
+            renders the visible 22×22 box with a white check icon on the
+            moss accent fill — bypasses the macOS Chrome quirk where
+            `accent-color` paints the box moss but leaves the system
+            checkmark black, which fails contrast on the moss background.
+          */}
+          <span
             style={{
               flexShrink: 0,
+              position: 'relative',
               width: 22,
               height: 22,
-              accentColor: 'var(--color-accent)',
+              display: 'inline-grid',
+              placeItems: 'center',
             }}
-            aria-label="Я согласен с условиями"
-          />
+          >
+            <input
+              type="checkbox"
+              checked={agreed}
+              onChange={(e) => form.setValue('agreed', e.target.checked, { shouldDirty: true })}
+              style={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                opacity: 0,
+                margin: 0,
+                cursor: 'pointer',
+              }}
+              aria-label="Я согласен с условиями"
+            />
+            <span
+              aria-hidden="true"
+              style={{
+                width: 22,
+                height: 22,
+                borderRadius: 'var(--radius-sm)',
+                border: `1.5px solid ${agreed ? 'var(--color-accent)' : 'var(--border-strong)'}`,
+                background: agreed ? 'var(--color-accent)' : 'var(--bg-card)',
+                color: 'var(--text-on-accent)',
+                display: 'grid',
+                placeItems: 'center',
+                transition:
+                  'background 120ms cubic-bezier(.2,.7,.3,1), border-color 120ms cubic-bezier(.2,.7,.3,1)',
+              }}
+            >
+              {agreed ? <Check size={14} strokeWidth={3} aria-hidden="true" /> : null}
+            </span>
+          </span>
           <span style={{ font: '400 16px/22px var(--font-sans)', color: 'var(--text-1)' }}>
             Я согласен(-на) с условиями
           </span>
