@@ -170,7 +170,11 @@ interface CatalogRowProps {
 function CatalogRow({ type, onAdd, isPending }: CatalogRowProps) {
   const entry = BLOCK_REGISTRY[type];
   const Icon = entry.icon;
-  const enabled = entry.enabledInPhase === 1;
+  // A row is enabled when its registry entry no longer carries a
+  // `disabledTooltip` — Plans 02-05 / 04-01 strip the tooltip the moment
+  // a block becomes runnable. The previous `enabledInPhase === 1` check
+  // froze the catalog at Phase 1 and silently hid every later block.
+  const enabled = entry.disabledTooltip === undefined;
 
   const row = (
     <button
