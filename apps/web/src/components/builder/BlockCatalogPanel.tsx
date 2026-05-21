@@ -58,24 +58,12 @@ export interface BlockCatalogPanelProps {
 export function BlockCatalogPanel({ studyId, workspaceId }: BlockCatalogPanelProps) {
   const open = useUiStore((s) => s.catalogPanelOpen);
   const setOpen = useUiStore((s) => s.setCatalogPanelOpen);
-  const forcedPosition = useUiStore((s) => s.catalogInsertPosition);
   const blocks = useBuilderStore((s) => s.blocks);
   const addMutation = useAddBlock(studyId, workspaceId);
 
-  // Insert position resolution:
-  //   1. If an inline `+` between blocks set `catalogInsertPosition`, honour
-  //      that exact slot (clamped to [1, thanksIdx] so welcome stays first
-  //      and thanks stays last).
-  //   2. Otherwise default to "before thanks" — the historical behaviour of
-  //      the bottom `+ Добавить блок` button.
+  // Insert position = before thanks. thanks is always the last block.
   const thanksIdx = blocks.findIndex((b) => b.type === 'thanks');
-  const defaultPosition = thanksIdx >= 0 ? thanksIdx : blocks.length;
-  const insertPosition = (() => {
-    if (forcedPosition === null) return defaultPosition;
-    const minAllowed = 1; // never insert before welcome (position 0)
-    const maxAllowed = defaultPosition; // never insert at/after thanks
-    return Math.min(Math.max(forcedPosition, minAllowed), maxAllowed);
-  })();
+  const insertPosition = thanksIdx >= 0 ? thanksIdx : blocks.length;
 
   const handleAdd = (type: BlockType) => {
     if (addMutation.isPending) {
