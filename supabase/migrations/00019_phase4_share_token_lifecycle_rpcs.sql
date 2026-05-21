@@ -99,13 +99,19 @@ BEGIN
     RAISE EXCEPTION 'unauthenticated' USING ERRCODE = '42501';
   END IF;
 
-  SELECT t.*, s.workspace_id INTO v_row, ws_id
+  -- Split into two SELECTs: PL/pgSQL forbids mixing a %ROWTYPE record
+  -- (v_row) with a scalar (ws_id) in a single INTO list. Two-step lookup
+  -- preserves NOT FOUND semantics and gives us both values cleanly.
+  SELECT t.* INTO v_row
     FROM public.share_tokens t
-    JOIN public.studies s ON s.id = t.study_id
    WHERE t.token = p_token LIMIT 1;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'token_not_found' USING ERRCODE = '02000';
   END IF;
+
+  SELECT s.workspace_id INTO ws_id
+    FROM public.studies s
+   WHERE s.id = v_row.study_id;
   IF COALESCE(public.current_workspace_role(ws_id), 'none')
        NOT IN ('owner','editor') THEN
     RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
