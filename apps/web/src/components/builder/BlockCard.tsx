@@ -16,7 +16,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { GitBranch } from 'lucide-react';
+import { GitBranch, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { useUiStore } from '@/lib/stores/ui';
 import { useForceUpdateBlock, useUpdateBlock, ConflictError } from '@/lib/queries/blocks';
@@ -52,6 +52,8 @@ export function BlockCard({ block, index, studyId, workspaceId }: BlockCardProps
   const forceMutation = useForceUpdateBlock(studyId, workspaceId);
   const qc = useQueryClient();
   const selectedBlockId = useUiStore((s) => s.selectedBlockId);
+  const setCatalogOpen = useUiStore((s) => s.setCatalogPanelOpen);
+  const setCatalogPosition = useUiStore((s) => s.setCatalogInsertPosition);
   const isActive = selectedBlockId === block.id;
 
   const [saveState, setSaveState] = useState<SaveState>('idle');
@@ -359,6 +361,79 @@ export function BlockCard({ block, index, studyId, workspaceId }: BlockCardProps
           editor
         )}
       </div>
+
+      {/*
+        Inline "Добавить блок ниже" — sits at the bottom of every card
+        EXCEPT thanks (thanks is pinned last; nothing inserts after it).
+        Always visible at low opacity so the click target is discoverable
+        without hover, then brightens on hover/focus. New block lands at
+        position = index + 1, pushing everything below by +1. The bottom
+        dashed "Добавить блок" button in BuilderShell still adds at the
+        end (i.e. before thanks).
+      */}
+      {block.type !== 'thanks' ? (
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'center',
+            // Bleed half the button height (16px) into BuilderShell's 16px
+            // gap below this card — visually anchors the action "between
+            // blocks" without inserting a row that changes layout.
+            marginTop: 20,
+            marginBottom: -28,
+          }}
+        >
+          <button
+            type="button"
+            aria-label={`Добавить блок после: ${blockTitle}`}
+            onClick={() => {
+              setCatalogPosition(index + 1);
+              setCatalogOpen(true);
+            }}
+            className="mx-add-block-inline"
+            style={{
+              height: 32,
+              padding: '0 14px',
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border-1)',
+              borderRadius: 'var(--radius)',
+              color: 'var(--text-2)',
+              font: '400 13px var(--font-sans)',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              boxShadow: 'var(--shadow-card)',
+              opacity: 0.85,
+              transition:
+                'opacity 120ms cubic-bezier(.2,.7,.3,1), border-color 120ms cubic-bezier(.2,.7,.3,1), color 120ms cubic-bezier(.2,.7,.3,1)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.opacity = '1';
+              e.currentTarget.style.borderColor = 'var(--color-accent)';
+              e.currentTarget.style.color = 'var(--color-accent)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.opacity = '0.85';
+              e.currentTarget.style.borderColor = 'var(--border-1)';
+              e.currentTarget.style.color = 'var(--text-2)';
+            }}
+            onFocus={(e) => {
+              e.currentTarget.style.opacity = '1';
+              e.currentTarget.style.borderColor = 'var(--color-accent)';
+              e.currentTarget.style.color = 'var(--color-accent)';
+            }}
+            onBlur={(e) => {
+              e.currentTarget.style.opacity = '0.85';
+              e.currentTarget.style.borderColor = 'var(--border-1)';
+              e.currentTarget.style.color = 'var(--text-2)';
+            }}
+          >
+            <Plus size={14} strokeWidth={1.75} aria-hidden="true" />
+            <span>Добавить блок</span>
+          </button>
+        </div>
+      ) : null}
     </section>
   );
 }
