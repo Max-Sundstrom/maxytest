@@ -155,6 +155,99 @@ export const agreementContentSchema = z.object({
   required: z.boolean().default(true), // D-95 — agreement default REQUIRED
 });
 
+// ============================================================================
+// Quick task 260522-jwn — SEQ + UMUX-Lite + NASA-TLX (Raw) survey blocks.
+// ============================================================================
+//
+// Three standardized instruments — pure stylistic siblings of the existing
+// Phase 4 scale / context blocks. See RESEARCH.md for canonical formulas +
+// Russian copy decisions + pitfall callouts.
+//
+// Pitfall 1 (UMUX-Lite) — formula MUST subtract 1 from each item before sum,
+// then multiply by 100/12 (range 0..100). Boundary test in
+// apps/web/src/lib/analytics/__tests__/umux-lite-score.test.ts locks (1,1→0)
+// (7,7→100) (4,4→50).
+// Pitfall 2 (NASA-TLX) — Performance dimension is NOT inverted at composite
+// time. UI label «Идеально ←→ Полная неудача» (low cell = good performance);
+// raw 0..20 cell index is stored as-is.
+
+export const seqContentSchema = z.object({
+  type: z.literal('seq'),
+  question: z
+    .string()
+    .min(1, 'Введите текст вопроса')
+    .max(280, 'Длина вопроса — не более 280 символов')
+    .default('В целом эта задача была…'),
+  helper: z.string().max(200, 'Подсказка — не более 200 символов').optional(),
+  required: z.boolean().default(false),
+});
+
+export const seqAnswerSchema = z.object({
+  value: z.number().int().min(1).max(7),
+});
+
+export const umuxLiteContentSchema = z.object({
+  type: z.literal('umux_lite'),
+  item1_label: z
+    .string()
+    .min(1, 'Подпись пункта 1 обязательна')
+    .max(280, 'Подпись пункта — не более 280 символов')
+    .default('Возможности этого продукта соответствуют моим требованиям'),
+  item2_label: z
+    .string()
+    .min(1, 'Подпись пункта 2 обязательна')
+    .max(280, 'Подпись пункта — не более 280 символов')
+    .default('Этим продуктом легко пользоваться'),
+  helper: z.string().max(200, 'Подсказка — не более 200 символов').optional(),
+  required: z.boolean().default(false),
+});
+
+export const umuxLiteAnswerSchema = z.object({
+  item1: z.number().int().min(1).max(7).optional(),
+  item2: z.number().int().min(1).max(7).optional(),
+});
+
+export const nasaTlxContentSchema = z
+  .object({
+    type: z.literal('nasa_tlx'),
+    title: z
+      .string()
+      .min(1, 'Заголовок обязателен')
+      .max(120, 'Заголовок — не более 120 символов')
+      .default('Оценка нагрузки на задачу'),
+    dimensions: z
+      .object({
+        mental: z.boolean().default(true),
+        physical: z.boolean().default(true),
+        temporal: z.boolean().default(true),
+        performance: z.boolean().default(true),
+        effort: z.boolean().default(true),
+        frustration: z.boolean().default(true),
+      })
+      .default({
+        mental: true,
+        physical: true,
+        temporal: true,
+        performance: true,
+        effort: true,
+        frustration: true,
+      }),
+    required: z.boolean().default(false),
+  })
+  .refine((c) => Object.values(c.dimensions).some(Boolean), {
+    message: 'Включите хотя бы одно измерение',
+    path: ['dimensions'],
+  });
+
+export const nasaTlxAnswerSchema = z.object({
+  mental: z.number().int().min(0).max(20).optional(),
+  physical: z.number().int().min(0).max(20).optional(),
+  temporal: z.number().int().min(0).max(20).optional(),
+  performance: z.number().int().min(0).max(20).optional(),
+  effort: z.number().int().min(0).max(20).optional(),
+  frustration: z.number().int().min(0).max(20).optional(),
+});
+
 export const contextContentSchema = z
   .object({
     type: z.literal('context'),
@@ -213,6 +306,9 @@ export const blockContentSchema = z.discriminatedUnion('type', [
   npsContentSchema,
   agreementContentSchema,
   contextContentSchema,
+  seqContentSchema,
+  umuxLiteContentSchema,
+  nasaTlxContentSchema,
 ]);
 
 export type WelcomeContent = z.infer<typeof welcomeContentSchema>;
@@ -224,6 +320,9 @@ export type ScaleContent = z.infer<typeof scaleContentSchema>;
 export type NpsContent = z.infer<typeof npsContentSchema>;
 export type AgreementContent = z.infer<typeof agreementContentSchema>;
 export type ContextContent = z.infer<typeof contextContentSchema>;
+export type SeqContent = z.infer<typeof seqContentSchema>;
+export type UmuxLiteContent = z.infer<typeof umuxLiteContentSchema>;
+export type NasaTlxContent = z.infer<typeof nasaTlxContentSchema>;
 export type BlockContent = z.infer<typeof blockContentSchema>;
 
 // ============================================================================
@@ -266,3 +365,7 @@ export const contextAnswerSchema = z.object({
   role: z.string().max(120).optional(),
 });
 export type ContextAnswer = z.infer<typeof contextAnswerSchema>;
+
+export type SeqAnswer = z.infer<typeof seqAnswerSchema>;
+export type UmuxLiteAnswer = z.infer<typeof umuxLiteAnswerSchema>;
+export type NasaTlxAnswer = z.infer<typeof nasaTlxAnswerSchema>;

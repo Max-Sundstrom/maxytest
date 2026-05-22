@@ -130,11 +130,28 @@ export const BLOCK_REGISTRY: Record<BlockType, BlockRegistryEntry> = {
   },
   umux_lite: {
     label: 'UMUX-Lite',
-    description: 'Standardised two-question usability score.',
+    description: 'Стандартный двухпунктовый usability-индикатор (композит 0..100).',
     icon: ScrollText,
     category: 'survey',
     enabledInPhase: 4,
-    disabledTooltip: 'Coming in Phase 4',
+    // disabledTooltip removed — quick task 260522-jwn flips this on.
+  },
+  seq: {
+    label: 'SEQ — Single Ease Question',
+    description: 'Стандартный однопунктовый пост-задачный 7-балльный опрос сложности задачи.',
+    icon: BarChart3,
+    category: 'survey',
+    enabledInPhase: 4,
+    // quick task 260522-jwn — net-new enabled block.
+  },
+  nasa_tlx: {
+    label: 'NASA-TLX (Raw)',
+    description:
+      'Шесть измерений рабочей нагрузки по 21-балльной шкале (RTLX, без paired-comparisons).',
+    icon: Activity,
+    category: 'survey',
+    enabledInPhase: 4,
+    // quick task 260522-jwn — net-new enabled block.
   },
 
   // -- Phase 2 (prototype) — active as of Plan 02-05 ------------------------

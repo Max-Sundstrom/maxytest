@@ -30,10 +30,13 @@ import {
   AGREEMENT_DEFAULT,
   CHOICE_DEFAULT,
   CONTEXT_DEFAULT,
+  NASA_TLX_DEFAULT,
   NPS_DEFAULT,
   OPEN_QUESTION_DEFAULT,
   PROTOTYPE_DEFAULT_PARTIAL,
   SCALE_DEFAULT,
+  SEQ_DEFAULT,
+  UMUX_LITE_DEFAULT,
 } from '@/lib/blocks/defaults';
 import { useAddBlock } from '@/lib/queries/blocks';
 import { useBuilderStore } from '@/lib/stores/builder';
@@ -110,6 +113,12 @@ export function BlockCatalogPanel({ studyId, workspaceId }: BlockCatalogPanelPro
       payload = { position: insertPosition, type: 'agreement', content: AGREEMENT_DEFAULT };
     } else if (type === 'context') {
       payload = { position: insertPosition, type: 'context', content: CONTEXT_DEFAULT };
+    } else if (type === 'seq') {
+      payload = { position: insertPosition, type: 'seq', content: SEQ_DEFAULT };
+    } else if (type === 'umux_lite') {
+      payload = { position: insertPosition, type: 'umux_lite', content: UMUX_LITE_DEFAULT };
+    } else if (type === 'nasa_tlx') {
+      payload = { position: insertPosition, type: 'nasa_tlx', content: NASA_TLX_DEFAULT };
     }
     if (!payload) return;
 
@@ -158,7 +167,10 @@ export function BlockCatalogPanel({ studyId, workspaceId }: BlockCatalogPanelPro
                             type === 'scale' ||
                             type === 'nps' ||
                             type === 'agreement' ||
-                            type === 'context')
+                            type === 'context' ||
+                            type === 'seq' ||
+                            type === 'umux_lite' ||
+                            type === 'nasa_tlx')
                         }
                       />
                     ))}

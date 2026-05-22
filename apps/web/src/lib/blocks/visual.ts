@@ -77,6 +77,8 @@ const PER_TYPE: Record<BlockType, { category: BlockVisualCategory; icon: LucideI
   matrix: { category: 'choice', icon: TableProperties },
   ranking: { category: 'choice', icon: ListOrdered },
   umux_lite: { category: 'scale', icon: ScrollText },
+  seq: { category: 'scale', icon: BarChart3 },
+  nasa_tlx: { category: 'scale', icon: Activity },
   five_second: { category: 'proto', icon: Timer },
   first_click: { category: 'proto', icon: Target },
   preference: { category: 'proto', icon: Vote },

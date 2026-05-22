@@ -23,7 +23,7 @@ import { supabase } from '@/lib/supabase/auth';
 import { getBlockSavesChannel } from '@/lib/broadcast/block-saves';
 import type { Database, Json } from '@/lib/supabase/types.gen';
 import type { BlockContent } from '@/lib/blocks/schemas';
-import type { Block, Phase4BlockType } from '@/lib/blocks/types';
+import type { Block, Phase4xBlockType } from '@/lib/blocks/types';
 
 type BlockRow = Database['public']['Tables']['blocks']['Row'];
 
@@ -33,7 +33,7 @@ function rowToBlock(row: BlockRow): Block {
     id: row.id,
     study_id: row.study_id,
     position: row.position,
-    type: row.type as Phase4BlockType,
+    type: row.type as Phase4xBlockType,
     pinned: row.pinned,
     // The DB stores content as `jsonb`; we trust the editor + create_study
     // RPC to only write Zod-validated content. Downstream renderers can
@@ -216,7 +216,7 @@ export function useAddBlock(studyId: string, workspaceId: string) {
   return useMutation({
     mutationFn: async (input: {
       position: number;
-      type: Phase4BlockType;
+      type: Phase4xBlockType;
       content: BlockContent;
       idempotencyKey?: string;
     }): Promise<Block> => {

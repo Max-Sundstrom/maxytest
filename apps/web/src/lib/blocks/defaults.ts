@@ -12,10 +12,13 @@ import type {
   AgreementContent,
   ChoiceContent,
   ContextContent,
+  NasaTlxContent,
   NpsContent,
   OpenQuestionContent,
   ScaleContent,
+  SeqContent,
   ThanksContent,
+  UmuxLiteContent,
   WelcomeContent,
 } from './schemas';
 
@@ -100,6 +103,106 @@ export const AGREEMENT_DEFAULT: AgreementContent = {
     'Я согласен(-на) с тем, что мои ответы будут использованы в исследовательских целях. ' +
     'Ответы анонимны и не будут переданы третьим лицам.',
   required: true, // D-95
+};
+
+// ============================================================================
+// Quick task 260522-jwn — SEQ + UMUX-Lite + NASA-TLX (Raw) defaults.
+// ============================================================================
+//
+// Russian copy locked here so editor preview / runner / focused-report import
+// from the SAME source of truth (RESEARCH.md Pitfall 8 — copy drift across
+// three render surfaces is a real bug class).
+
+/** SEQ endpoint label (left, value=1) — locked by user. */
+export const SEQ_ENDPOINT_MIN_DEFAULT = 'Очень сложной';
+/** SEQ endpoint label (right, value=7) — locked by user. */
+export const SEQ_ENDPOINT_MAX_DEFAULT = 'Очень простой';
+
+/** UMUX-Lite shared endpoint (value=1). */
+export const UMUX_LITE_ENDPOINT_MIN = 'Совершенно не согласен(-на)';
+/** UMUX-Lite shared endpoint (value=7). */
+export const UMUX_LITE_ENDPOINT_MAX = 'Полностью согласен(-на)';
+
+/**
+ * NASA-TLX per-dimension presentation metadata.
+ *
+ * `minLabel` / `maxLabel` are the row endpoint captions shown under each
+ * 21-cell row in the runner. Per RESEARCH.md Pattern 3 + Pitfall 2:
+ *   - Performance uses «Идеально ←→ Полная неудача» — low cell index = good
+ *     performance, high = poor performance. The composite formula treats this
+ *     identically to other dimensions (NO inversion).
+ *   - All other dimensions: low cell = low workload, high cell = high workload.
+ *
+ * Russian copy is LOCKED in defaults (designer cannot edit per-dimension
+ * labels; only the toggle to enable/disable each dimension is editable).
+ */
+export const NASA_TLX_DIMENSION_META: Record<
+  'mental' | 'physical' | 'temporal' | 'performance' | 'effort' | 'frustration',
+  { label: string; helper: string; minLabel: string; maxLabel: string }
+> = {
+  mental: {
+    label: 'Умственная нагрузка',
+    helper: 'Сколько умственных и перцептивных усилий потребовалось?',
+    minLabel: 'Низкая',
+    maxLabel: 'Высокая',
+  },
+  physical: {
+    label: 'Физическая нагрузка',
+    helper: 'Сколько физических усилий потребовалось?',
+    minLabel: 'Низкая',
+    maxLabel: 'Высокая',
+  },
+  temporal: {
+    label: 'Временная нагрузка',
+    helper: 'Насколько вы чувствовали спешку или давление времени?',
+    minLabel: 'Низкая',
+    maxLabel: 'Высокая',
+  },
+  performance: {
+    label: 'Успешность выполнения',
+    helper: 'Насколько успешно, по вашему мнению, вы справились с задачей?',
+    minLabel: 'Идеально',
+    maxLabel: 'Полная неудача',
+  },
+  effort: {
+    label: 'Усилие',
+    helper: 'Сколько усилий (умственных и физических) потребовалось?',
+    minLabel: 'Низкое',
+    maxLabel: 'Высокое',
+  },
+  frustration: {
+    label: 'Фрустрация',
+    helper: 'Насколько вы чувствовали раздражение, стресс или досаду?',
+    minLabel: 'Низкая',
+    maxLabel: 'Высокая',
+  },
+};
+
+export const SEQ_DEFAULT: SeqContent = {
+  type: 'seq',
+  question: 'В целом эта задача была…',
+  required: false,
+};
+
+export const UMUX_LITE_DEFAULT: UmuxLiteContent = {
+  type: 'umux_lite',
+  item1_label: 'Возможности этого продукта соответствуют моим требованиям',
+  item2_label: 'Этим продуктом легко пользоваться',
+  required: false,
+};
+
+export const NASA_TLX_DEFAULT: NasaTlxContent = {
+  type: 'nasa_tlx',
+  title: 'Оценка нагрузки на задачу',
+  dimensions: {
+    mental: true,
+    physical: true,
+    temporal: true,
+    performance: true,
+    effort: true,
+    frustration: true,
+  },
+  required: false,
 };
 
 export const CONTEXT_DEFAULT: ContextContent = {
