@@ -51,6 +51,15 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  server: {
+    // Allow Cloudflare Tunnel subdomains for ad-hoc public access during UX
+    // research sessions when the production deploy is unavailable.
+    allowedHosts: ['.trycloudflare.com'],
+  },
+  preview: {
+    port: 5173,
+    allowedHosts: ['.trycloudflare.com'],
+  },
   build: {
     target: 'es2022',
   },
