@@ -15,23 +15,32 @@ import {
   choiceContentSchema,
   contextAnswerSchema,
   contextContentSchema,
+  nasaTlxAnswerSchema,
+  nasaTlxContentSchema,
   npsAnswerSchema,
   npsContentSchema,
   openQuestionContentSchema,
   prototypeContentSchema,
   scaleAnswerSchema,
   scaleContentSchema,
+  seqAnswerSchema,
+  seqContentSchema,
   thanksContentSchema,
+  umuxLiteAnswerSchema,
+  umuxLiteContentSchema,
   welcomeContentSchema,
 } from './schemas';
 import {
   AGREEMENT_DEFAULT,
   CHOICE_DEFAULT,
   CONTEXT_DEFAULT,
+  NASA_TLX_DEFAULT,
   NPS_DEFAULT,
   OPEN_QUESTION_DEFAULT,
   SCALE_DEFAULT,
+  SEQ_DEFAULT,
   THANKS_DEFAULT,
+  UMUX_LITE_DEFAULT,
   WELCOME_DEFAULT,
 } from './defaults';
 import { BLOCK_REGISTRY } from './registry';
@@ -668,11 +677,265 @@ describe('BLOCK_REGISTRY — Phase 4 flip', () => {
     },
   );
 
-  it.each(['matrix', 'ranking', 'umux_lite'] as const)(
+  it.each(['matrix', 'ranking'] as const)(
     '%s still carries disabledTooltip (Phase 4.1 not yet active)',
     (key) => {
       const entry = BLOCK_REGISTRY[key];
       expect(entry.disabledTooltip).toBeDefined();
     },
   );
+});
+
+// ============================================================================
+// Quick task 260522-jwn — SEQ / UMUX-Lite / NASA-TLX survey blocks
+// ============================================================================
+
+describe('seqContentSchema (quick-260522-jwn)', () => {
+  it('accepts a valid SEQ payload with default question copy', () => {
+    const r = seqContentSchema.safeParse({
+      type: 'seq',
+      question: 'В целом эта задача была…',
+      required: false,
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('accepts SEQ with optional helper and required=true', () => {
+    const r = seqContentSchema.safeParse({
+      type: 'seq',
+      question: 'Q?',
+      helper: 'Подсказка',
+      required: true,
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('rejects SEQ with empty question', () => {
+    const r = seqContentSchema.safeParse({ type: 'seq', question: '' });
+    expect(r.success).toBe(false);
+  });
+
+  it('rejects SEQ with question longer than 280 chars', () => {
+    const r = seqContentSchema.safeParse({ type: 'seq', question: 'q'.repeat(281) });
+    expect(r.success).toBe(false);
+  });
+});
+
+describe('seqAnswerSchema', () => {
+  it('accepts integer in [1, 7]', () => {
+    expect(seqAnswerSchema.safeParse({ value: 1 }).success).toBe(true);
+    expect(seqAnswerSchema.safeParse({ value: 4 }).success).toBe(true);
+    expect(seqAnswerSchema.safeParse({ value: 7 }).success).toBe(true);
+  });
+
+  it('rejects out-of-range values', () => {
+    expect(seqAnswerSchema.safeParse({ value: 0 }).success).toBe(false);
+    expect(seqAnswerSchema.safeParse({ value: 8 }).success).toBe(false);
+    expect(seqAnswerSchema.safeParse({ value: 3.5 }).success).toBe(false);
+  });
+});
+
+describe('umuxLiteContentSchema (quick-260522-jwn)', () => {
+  it('accepts a valid UMUX-Lite payload with default Lewis canon item labels', () => {
+    const r = umuxLiteContentSchema.safeParse({
+      type: 'umux_lite',
+      item1_label: 'Возможности этого продукта соответствуют моим требованиям',
+      item2_label: 'Этим продуктом легко пользоваться',
+      required: false,
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('rejects UMUX-Lite with empty item1_label', () => {
+    const r = umuxLiteContentSchema.safeParse({
+      type: 'umux_lite',
+      item1_label: '',
+      item2_label: 'X',
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it('rejects UMUX-Lite with item label longer than 280 chars', () => {
+    const r = umuxLiteContentSchema.safeParse({
+      type: 'umux_lite',
+      item1_label: 'X',
+      item2_label: 'y'.repeat(281),
+    });
+    expect(r.success).toBe(false);
+  });
+});
+
+describe('umuxLiteAnswerSchema', () => {
+  it('accepts both items in [1, 7]', () => {
+    expect(umuxLiteAnswerSchema.safeParse({ item1: 1, item2: 7 }).success).toBe(true);
+    expect(umuxLiteAnswerSchema.safeParse({ item1: 4, item2: 4 }).success).toBe(true);
+  });
+
+  it('accepts partial answer (only item1 OR only item2)', () => {
+    expect(umuxLiteAnswerSchema.safeParse({ item1: 5 }).success).toBe(true);
+    expect(umuxLiteAnswerSchema.safeParse({ item2: 5 }).success).toBe(true);
+    expect(umuxLiteAnswerSchema.safeParse({}).success).toBe(true);
+  });
+
+  it('rejects out-of-range values', () => {
+    expect(umuxLiteAnswerSchema.safeParse({ item1: 0, item2: 5 }).success).toBe(false);
+    expect(umuxLiteAnswerSchema.safeParse({ item1: 5, item2: 8 }).success).toBe(false);
+    expect(umuxLiteAnswerSchema.safeParse({ item1: 3.5 }).success).toBe(false);
+  });
+});
+
+describe('nasaTlxContentSchema (quick-260522-jwn)', () => {
+  it('accepts a valid NASA-TLX payload with all six dimensions enabled', () => {
+    const r = nasaTlxContentSchema.safeParse({
+      type: 'nasa_tlx',
+      title: 'Оценка нагрузки на задачу',
+      dimensions: {
+        mental: true,
+        physical: true,
+        temporal: true,
+        performance: true,
+        effort: true,
+        frustration: true,
+      },
+      required: false,
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('accepts NASA-TLX with subset of dimensions enabled', () => {
+    const r = nasaTlxContentSchema.safeParse({
+      type: 'nasa_tlx',
+      title: 'T',
+      dimensions: {
+        mental: true,
+        physical: false,
+        temporal: false,
+        performance: false,
+        effort: true,
+        frustration: false,
+      },
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('rejects NASA-TLX with ALL six dimensions disabled (refine)', () => {
+    const r = nasaTlxContentSchema.safeParse({
+      type: 'nasa_tlx',
+      title: 'T',
+      dimensions: {
+        mental: false,
+        physical: false,
+        temporal: false,
+        performance: false,
+        effort: false,
+        frustration: false,
+      },
+    });
+    expect(r.success).toBe(false);
+    if (!r.success) {
+      const messages = r.error.issues.map((i) => i.message).join(' | ');
+      expect(messages).toContain('Включите хотя бы одно измерение');
+    }
+  });
+
+  it('rejects NASA-TLX with empty title', () => {
+    const r = nasaTlxContentSchema.safeParse({ type: 'nasa_tlx', title: '' });
+    expect(r.success).toBe(false);
+  });
+});
+
+describe('nasaTlxAnswerSchema', () => {
+  it('accepts integer cell indices in [0, 20] for each dimension', () => {
+    expect(
+      nasaTlxAnswerSchema.safeParse({
+        mental: 0,
+        physical: 10,
+        temporal: 20,
+      }).success,
+    ).toBe(true);
+  });
+
+  it('accepts empty answer (all dimensions optional)', () => {
+    expect(nasaTlxAnswerSchema.safeParse({}).success).toBe(true);
+  });
+
+  it('rejects out-of-range cell indices', () => {
+    expect(nasaTlxAnswerSchema.safeParse({ mental: -1 }).success).toBe(false);
+    expect(nasaTlxAnswerSchema.safeParse({ mental: 21 }).success).toBe(false);
+    expect(nasaTlxAnswerSchema.safeParse({ effort: 3.5 }).success).toBe(false);
+  });
+});
+
+describe('Quick-task defaults round-trip through their schemas', () => {
+  it('SEQ_DEFAULT validates through seqContentSchema and the union', () => {
+    expect(seqContentSchema.safeParse(SEQ_DEFAULT).success).toBe(true);
+    expect(blockContentSchema.safeParse(SEQ_DEFAULT).success).toBe(true);
+  });
+
+  it('UMUX_LITE_DEFAULT validates through umuxLiteContentSchema and the union', () => {
+    expect(umuxLiteContentSchema.safeParse(UMUX_LITE_DEFAULT).success).toBe(true);
+    expect(blockContentSchema.safeParse(UMUX_LITE_DEFAULT).success).toBe(true);
+  });
+
+  it('NASA_TLX_DEFAULT validates through nasaTlxContentSchema and the union', () => {
+    expect(nasaTlxContentSchema.safeParse(NASA_TLX_DEFAULT).success).toBe(true);
+    expect(blockContentSchema.safeParse(NASA_TLX_DEFAULT).success).toBe(true);
+  });
+});
+
+describe('BLOCK_REGISTRY — quick-task flip (260522-jwn)', () => {
+  it.each(['seq', 'umux_lite', 'nasa_tlx'] as const)(
+    '%s has enabledInPhase=4 and NO disabledTooltip (quick-task flip)',
+    (key) => {
+      const entry = BLOCK_REGISTRY[key];
+      expect(entry.enabledInPhase).toBe(4);
+      expect(entry.disabledTooltip).toBeUndefined();
+    },
+  );
+});
+
+describe('blockContentSchema (extended for quick-260522-jwn)', () => {
+  it('discriminates seq variant correctly', () => {
+    const result = blockContentSchema.parse({
+      type: 'seq',
+      question: 'В целом эта задача была…',
+    });
+    expect(result.type).toBe('seq');
+    if (result.type === 'seq') {
+      expect(result.question).toBe('В целом эта задача была…');
+    }
+  });
+
+  it('discriminates umux_lite variant correctly', () => {
+    const result = blockContentSchema.parse({
+      type: 'umux_lite',
+      item1_label: 'A',
+      item2_label: 'B',
+    });
+    expect(result.type).toBe('umux_lite');
+    if (result.type === 'umux_lite') {
+      expect(result.item1_label).toBe('A');
+      expect(result.item2_label).toBe('B');
+    }
+  });
+
+  it('discriminates nasa_tlx variant correctly', () => {
+    const result = blockContentSchema.parse({
+      type: 'nasa_tlx',
+      title: 'T',
+      dimensions: {
+        mental: true,
+        physical: false,
+        temporal: false,
+        performance: false,
+        effort: false,
+        frustration: false,
+      },
+    });
+    expect(result.type).toBe('nasa_tlx');
+    if (result.type === 'nasa_tlx') {
+      expect(result.title).toBe('T');
+      expect(result.dimensions.mental).toBe(true);
+    }
+  });
 });
