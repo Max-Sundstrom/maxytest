@@ -26,6 +26,8 @@ export type BlockType =
   | 'matrix'
   | 'ranking'
   | 'umux_lite'
+  | 'seq'
+  | 'nasa_tlx'
   | 'prototype'
   | 'five_second'
   | 'first_click'
@@ -74,11 +76,30 @@ export type Phase4BlockType =
   | 'agreement'
   | 'context';
 
+/**
+ * Quick task 260522-jwn — adds SEQ + UMUX-Lite + NASA-TLX (Raw) survey blocks.
+ *
+ * The DB CHECK constraint on `public.blocks.type` is widened in tandem by
+ * `supabase/migrations/00023_quick_seq_umux_lite_nasa_tlx_blocks.sql`.
+ * Phase 4 ladder type (Phase4BlockType) is preserved as a historical reference
+ * for narrowing readability; `Block.type` now points at this alias.
+ *
+ * `umux_lite` was already present in `BlockType` (it shipped registered-but-
+ * disabled in Phase 1); the ladder name didn't include it because Phase 4
+ * never flipped it on. This addition flips it on alongside the two net-new
+ * types (`seq`, `nasa_tlx`). See RESEARCH.md Pitfall 4.
+ *
+ * RESEARCH.md Pitfall 3 — DB and TS move together; widening the TS alias
+ * without widening the CHECK constraint (or vice versa) would create a
+ * runtime / compile-time skew that the publish flow eventually hits.
+ */
+export type Phase4xBlockType = Phase4BlockType | 'seq' | 'umux_lite' | 'nasa_tlx';
+
 export interface Block {
   id: string;
   study_id: string;
   position: number;
-  type: Phase4BlockType;
+  type: Phase4xBlockType;
   /** welcome/thanks have pinned=true → cannot be moved or deleted (D-11). */
   pinned: boolean;
   /** Discriminated by `type`; validated via `blockContentSchema`. */
