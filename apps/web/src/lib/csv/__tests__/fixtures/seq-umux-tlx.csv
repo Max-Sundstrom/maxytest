@@ -1,0 +1,4 @@
+﻿session_id,started_at,completed_at,duration_seconds,device_type,outcome,q1_seq_value,q1_seq_interpretation,q2_umux_item1,q2_umux_item2,q2_umux_composite,q2_umux_interpretation,q3_tlx_mental,q3_tlx_temporal,q3_tlx_performance,q3_tlx_effort,q3_tlx_frustration,q3_tlx_rtlx,q3_tlx_interpretation
+sess-A,2026-05-01T10:00:00.000Z,2026-05-01T10:02:00.000Z,120,mobile,,6,Очень легко,6,7,91.67,Отлично,5,5,5,5,5,25.00,Низкая нагрузка
+sess-B,2026-05-01T11:00:00.000Z,2026-05-01T11:02:00.000Z,120,desktop,,3,Скорее сложно,4,,,,10,10,20,10,10,60.00,Умеренная нагрузка
+sess-C,2026-05-01T12:00:00.000Z,2026-05-01T12:02:00.000Z,120,tablet,,7,Очень легко,7,7,100.00,Отлично,,,,,,,

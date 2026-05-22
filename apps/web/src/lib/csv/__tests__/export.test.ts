@@ -29,7 +29,7 @@
  *     fixtures stay diff-readable.
  */
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import type { Block } from '@/lib/blocks/types';
@@ -570,6 +570,191 @@ describe('buildCsv — mixed (proto + survey + open_question) fixture', () => {
 
     const csv = buildCsv(blocks, sessions, surveyResponses, outcomes, { includeBom: true });
     const golden = readFileSync(join(FIXTURES, 'mixed.csv'), 'utf-8');
+    expect(csv).toBe(golden);
+  });
+});
+
+// ─── 4.5. SEQ + UMUX-Lite + NASA-TLX fixture (Quick task 260522-skm) ─────
+
+describe('buildCsv — seq + umux_lite + nasa_tlx fixture', () => {
+  it('matches seq-umux-tlx.csv golden, including UMUX partial row + NASA-TLX skipped block + disabled-dim drop', () => {
+    const blocks: Block[] = [
+      {
+        id: 'block-welcome',
+        study_id: 'study-1',
+        position: 0,
+        type: 'welcome',
+        pinned: true,
+        content: { type: 'welcome', title: 'Hi', body: '', cta_label: 'Start' },
+        version: 0,
+        created_at: '2026-05-01T00:00:00.000Z',
+        updated_at: '2026-05-01T00:00:00.000Z',
+      },
+      // SEQ — single 7-point Likert
+      {
+        id: 'block-seq',
+        study_id: 'study-1',
+        position: 1,
+        type: 'seq',
+        pinned: false,
+        content: {
+          type: 'seq',
+          question: 'В целом эта задача была…',
+          required: false,
+        },
+        version: 1,
+        created_at: '2026-05-01T00:00:00.000Z',
+        updated_at: '2026-05-01T00:00:00.000Z',
+      },
+      // UMUX-Lite — two 7-point Likerts, composite 0..100
+      {
+        id: 'block-umux',
+        study_id: 'study-1',
+        position: 2,
+        type: 'umux_lite',
+        pinned: false,
+        content: {
+          type: 'umux_lite',
+          item1_label: 'Возможности этого продукта соответствуют моим требованиям',
+          item2_label: 'Этим продуктом легко пользоваться',
+          required: false,
+        },
+        version: 1,
+        created_at: '2026-05-01T00:00:00.000Z',
+        updated_at: '2026-05-01T00:00:00.000Z',
+      },
+      // NASA-TLX — Physical DISABLED (sit-at-desk usability test). Expect
+      // headers to skip `q3_tlx_physical` entirely (mirrors `context.age.enabled`
+      // precedent).
+      {
+        id: 'block-tlx',
+        study_id: 'study-1',
+        position: 3,
+        type: 'nasa_tlx',
+        pinned: false,
+        content: {
+          type: 'nasa_tlx',
+          title: 'Оценка нагрузки на задачу',
+          dimensions: {
+            mental: true,
+            physical: false,
+            temporal: true,
+            performance: true,
+            effort: true,
+            frustration: true,
+          },
+          required: false,
+        },
+        version: 1,
+        created_at: '2026-05-01T00:00:00.000Z',
+        updated_at: '2026-05-01T00:00:00.000Z',
+      },
+      {
+        id: 'block-thanks',
+        study_id: 'study-1',
+        position: 4,
+        type: 'thanks',
+        pinned: true,
+        content: { type: 'thanks', title: 'Спасибо', body: '' },
+        version: 0,
+        created_at: '2026-05-01T00:00:00.000Z',
+        updated_at: '2026-05-01T00:00:00.000Z',
+      },
+    ];
+
+    const sessions: DesignerSession[] = [
+      sess('sess-A', '2026-05-01T10:00:00.000Z', '2026-05-01T10:02:00.000Z', 'mobile'),
+      sess('sess-B', '2026-05-01T11:00:00.000Z', '2026-05-01T11:02:00.000Z', 'desktop'),
+      sess('sess-C', '2026-05-01T12:00:00.000Z', '2026-05-01T12:02:00.000Z', 'tablet'),
+    ];
+
+    const surveyResponses: SurveyResponseRow[] = [
+      // ─── sess-A: fully answered ─────────────────────────────────────
+      // SEQ=6 → «Очень легко»
+      // UMUX item1=6, item2=7 → composite ((5)+(6)) * 100/12 = 91.6666… → '91.67' → «Отлично»
+      // NASA-TLX 5 enabled dims all=5 → total=25, rtlx=(25/(5*20))*100=25.00 → «Низкая нагрузка»
+      {
+        session_id: 'sess-A',
+        block_id: 'block-seq',
+        answer: { value: 6 },
+        time_ms: 3000,
+        submitted_at: '2026-05-01T10:00:30.000Z',
+      },
+      {
+        session_id: 'sess-A',
+        block_id: 'block-umux',
+        answer: { item1: 6, item2: 7 },
+        time_ms: 5000,
+        submitted_at: '2026-05-01T10:01:00.000Z',
+      },
+      {
+        session_id: 'sess-A',
+        block_id: 'block-tlx',
+        answer: { mental: 5, temporal: 5, performance: 5, effort: 5, frustration: 5 },
+        time_ms: 12000,
+        submitted_at: '2026-05-01T10:02:00.000Z',
+      },
+      // ─── sess-B: SEQ + PARTIAL UMUX + full NASA-TLX (Performance=20) ─
+      // SEQ=3 → «Скорее сложно»
+      // UMUX item1=4, item2=undefined → item1 cell '4', item2/composite/interpretation EMPTY
+      //   (Pitfall 2 — never feed undefined into umuxLiteScore).
+      // NASA-TLX mental=10, temporal=10, performance=20, effort=10, frustration=10
+      //   → total=60, rtlx=60.00 → «Умеренная нагрузка» (boundary `<=60`).
+      //   Performance=20 alongside others=10 proves no Performance inversion —
+      //   the composite is NOT pulled down by Performance (Pitfall 4 lock).
+      {
+        session_id: 'sess-B',
+        block_id: 'block-seq',
+        answer: { value: 3 },
+        time_ms: 4000,
+        submitted_at: '2026-05-01T11:00:30.000Z',
+      },
+      {
+        session_id: 'sess-B',
+        block_id: 'block-umux',
+        answer: { item1: 4 },
+        time_ms: 5000,
+        submitted_at: '2026-05-01T11:01:00.000Z',
+      },
+      {
+        session_id: 'sess-B',
+        block_id: 'block-tlx',
+        answer: { mental: 10, temporal: 10, performance: 20, effort: 10, frustration: 10 },
+        time_ms: 12000,
+        submitted_at: '2026-05-01T11:02:00.000Z',
+      },
+      // ─── sess-C: SEQ + full UMUX, SKIPS NASA-TLX entirely ───────────
+      // SEQ=7 → «Очень легко»
+      // UMUX item1=7, item2=7 → composite (6+6)*100/12 = 100.00 → «Отлично»
+      //   ('100.00' not '100' — Pitfall 5 lock).
+      // NASA-TLX: NO response row → all q3_tlx_* cells EMPTY (Pitfall 1 lock).
+      {
+        session_id: 'sess-C',
+        block_id: 'block-seq',
+        answer: { value: 7 },
+        time_ms: 2000,
+        submitted_at: '2026-05-01T12:00:30.000Z',
+      },
+      {
+        session_id: 'sess-C',
+        block_id: 'block-umux',
+        answer: { item1: 7, item2: 7 },
+        time_ms: 5000,
+        submitted_at: '2026-05-01T12:01:00.000Z',
+      },
+    ];
+
+    const csv = buildCsv(blocks, sessions, surveyResponses, [], { includeBom: true });
+
+    // One-shot fixture generation — flip GENERATE_FIXTURE to `true`, run the
+    // test once, inspect the file by eye, then flip back to `false`. The
+    // committed fixture is the byte-equality reference forever after.
+    const GENERATE_FIXTURE = false;
+    if (GENERATE_FIXTURE) {
+      writeFileSync(join(FIXTURES, 'seq-umux-tlx.csv'), csv, 'utf-8');
+    }
+
+    const golden = readFileSync(join(FIXTURES, 'seq-umux-tlx.csv'), 'utf-8');
     expect(csv).toBe(golden);
   });
 });
