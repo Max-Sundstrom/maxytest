@@ -39,12 +39,18 @@ import { ScaleRunner } from './blocks/ScaleRunner';
 import { NpsRunner } from './blocks/NpsRunner';
 import { AgreementRunner } from './blocks/AgreementRunner';
 import { ContextRunner } from './blocks/ContextRunner';
+import { SeqRunner } from './blocks/SeqRunner';
+import { UmuxLiteRunner } from './blocks/UmuxLiteRunner';
+import { NasaTlxRunner } from './blocks/NasaTlxRunner';
 import type {
   ChoiceAnswer,
   ScaleAnswer,
   NpsAnswer,
   AgreementAnswer,
   ContextAnswer,
+  SeqAnswer,
+  UmuxLiteAnswer,
+  NasaTlxAnswer,
 } from '@/lib/blocks/schemas';
 
 export type RunnerMode = 'live' | 'preview';
@@ -375,6 +381,42 @@ function RunnerShellInner({
             onSubmit={(answer: ContextAnswer) => handleQuestionSubmit(answer)}
             onBack={handleBack}
             initialValue={answers[currentBlock.id]?.content as ContextAnswer | undefined}
+          />
+        )}
+        {currentBlock.type === 'seq' && (
+          <SeqRunner
+            block={currentBlock}
+            questionIndex={Math.max(0, questionIndex)}
+            questionTotal={Math.max(1, questionTotal)}
+            isFirst={isFirstQuestion}
+            isLast={isLastQuestion}
+            onSubmit={(answer: Partial<SeqAnswer>) => handleQuestionSubmit(answer)}
+            onBack={handleBack}
+            initialValue={answers[currentBlock.id]?.content as Partial<SeqAnswer> | undefined}
+          />
+        )}
+        {currentBlock.type === 'umux_lite' && (
+          <UmuxLiteRunner
+            block={currentBlock}
+            questionIndex={Math.max(0, questionIndex)}
+            questionTotal={Math.max(1, questionTotal)}
+            isFirst={isFirstQuestion}
+            isLast={isLastQuestion}
+            onSubmit={(answer: Partial<UmuxLiteAnswer>) => handleQuestionSubmit(answer)}
+            onBack={handleBack}
+            initialValue={answers[currentBlock.id]?.content as Partial<UmuxLiteAnswer> | undefined}
+          />
+        )}
+        {currentBlock.type === 'nasa_tlx' && (
+          <NasaTlxRunner
+            block={currentBlock}
+            questionIndex={Math.max(0, questionIndex)}
+            questionTotal={Math.max(1, questionTotal)}
+            isFirst={isFirstQuestion}
+            isLast={isLastQuestion}
+            onSubmit={(answer: Partial<NasaTlxAnswer>) => handleQuestionSubmit(answer)}
+            onBack={handleBack}
+            initialValue={answers[currentBlock.id]?.content as Partial<NasaTlxAnswer> | undefined}
           />
         )}
         {currentBlock.type === 'thanks' && (

@@ -35,6 +35,9 @@ import { ScaleEditor } from './editors/ScaleEditor';
 import { NpsEditor } from './editors/NpsEditor';
 import { AgreementEditor } from './editors/AgreementEditor';
 import { ContextEditor } from './editors/ContextEditor';
+import { SeqEditor } from './editors/SeqEditor';
+import { UmuxLiteEditor } from './editors/UmuxLiteEditor';
+import { NasaTlxEditor } from './editors/NasaTlxEditor';
 
 export interface BlockCardProps {
   block: Block;
@@ -214,6 +217,36 @@ export function BlockCard({ block, index, studyId, workspaceId }: BlockCardProps
     case 'context':
       editor = (
         <ContextEditor
+          block={block}
+          disabled={isConflict}
+          onSave={handleSave}
+          serverVersion={block.version}
+        />
+      );
+      break;
+    case 'seq':
+      editor = (
+        <SeqEditor
+          block={block}
+          disabled={isConflict}
+          onSave={handleSave}
+          serverVersion={block.version}
+        />
+      );
+      break;
+    case 'umux_lite':
+      editor = (
+        <UmuxLiteEditor
+          block={block}
+          disabled={isConflict}
+          onSave={handleSave}
+          serverVersion={block.version}
+        />
+      );
+      break;
+    case 'nasa_tlx':
+      editor = (
+        <NasaTlxEditor
           block={block}
           disabled={isConflict}
           onSave={handleSave}
