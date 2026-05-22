@@ -1,0 +1,21 @@
+// Cloudflare Workers config — static-assets mode (no server code, just SPA bundle).
+//
+// Why this file: Cloudflare's unified Workers+Pages dashboard now creates new
+// projects as Workers by default, which requires a deploy command. For a Vite
+// SPA without server-side logic, the right setup is the "static assets" mode —
+// wrangler uploads the `directory` below to Cloudflare's CDN, and a tiny
+// generated worker serves them.
+//
+// `not_found_handling: "single-page-application"` rewrites any URL that
+// doesn't match a static file to `/index.html`, so TanStack Router's
+// client-side routes (e.g. /studies/$id/edit, /r/$token) work on direct
+// navigation and refresh.
+{
+  "$schema": "https://unpkg.com/wrangler@latest/config-schema.json",
+  "name": "maxytest",
+  "compatibility_date": "2025-01-01",
+  "assets": {
+    "directory": "./apps/web/dist",
+    "not_found_handling": "single-page-application"
+  }
+}
