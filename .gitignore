@@ -39,3 +39,10 @@ test-results/
 
 # Supabase CLI per-machine link cache (recreated by `supabase link`)
 supabase/.temp/
+
+# Personal planning / Claude assistant context (kept local, not pushed)
+.planning/
+CLAUDE.md
+.claude/
+.git.backup/
+SPEC.md
