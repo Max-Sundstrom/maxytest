@@ -44,10 +44,16 @@ import type {
   ChoiceContent,
   ContextAnswer,
   ContextContent,
+  NasaTlxAnswer,
+  NasaTlxContent,
   NpsAnswer,
   ScaleAnswer,
   ScaleContent,
+  SeqAnswer,
+  UmuxLiteAnswer,
 } from '@/lib/blocks/schemas';
+import { NASA_TLX_DIMENSION_META } from '@/lib/blocks/defaults';
+import { umuxLiteScore } from '@/lib/analytics/umux-lite-score';
 
 export interface SubmitResponseInput {
   sessionId: string;
@@ -386,6 +392,63 @@ function summarizeBlockAnswer(
       const framesWord = framesVisited === 1 ? 'фрейм' : 'фреймов';
       const minutes = (durationMs / 60_000).toFixed(1);
       return `${framesVisited} ${framesWord} · ${minutes} мин`;
+    }
+    case 'seq': {
+      // Quick task 260522-jwn — SEQ: 7-point single ease question.
+      const a = resp?.answer as SeqAnswer | undefined;
+      if (typeof a?.value !== 'number') return null;
+      return `⊳ SEQ: ${a.value}/7`;
+    }
+    case 'umux_lite': {
+      // Quick task 260522-jwn — UMUX-Lite composite (0..100) per Lewis 2013.
+      const a = resp?.answer as UmuxLiteAnswer | undefined;
+      const i1 = a?.item1;
+      const i2 = a?.item2;
+      const i1Valid = typeof i1 === 'number';
+      const i2Valid = typeof i2 === 'number';
+      if (!i1Valid && !i2Valid) return null;
+      if (i1Valid && i2Valid) {
+        const composite = umuxLiteScore(i1, i2);
+        return `▤ UMUX-Lite: ${composite.toFixed(0)}/100 (${i1}, ${i2})`;
+      }
+      // Partial — show what's there.
+      return `▤ UMUX-Lite: частично (${i1 ?? '—'}, ${i2 ?? '—'})`;
+    }
+    case 'nasa_tlx': {
+      // Quick task 260522-jwn — NASA-TLX RTLX composite (0..100), no inversion.
+      const content = block.content as NasaTlxContent;
+      const a = resp?.answer as NasaTlxAnswer | undefined;
+      if (!a) return null;
+      const dimOrder = [
+        'mental',
+        'physical',
+        'temporal',
+        'performance',
+        'effort',
+        'frustration',
+      ] as const;
+      const enabledDims = dimOrder.filter((d) => content.dimensions[d] === true);
+      const answered = enabledDims.filter((d) => typeof a[d] === 'number');
+      if (answered.length === 0) return null;
+      if (answered.length === enabledDims.length) {
+        // Complete — compute composite scaled to dynamic max.
+        const total = enabledDims.reduce((sum, d) => sum + (a[d] ?? 0), 0);
+        const maxPossible = enabledDims.length * 20;
+        const composite = maxPossible === 0 ? 0 : (total / maxPossible) * 100;
+        // Find the dominant dimension (highest raw value among enabled).
+        let topDim: (typeof dimOrder)[number] | null = null;
+        let topVal = -1;
+        for (const d of enabledDims) {
+          const v = a[d];
+          if (typeof v === 'number' && v > topVal) {
+            topVal = v;
+            topDim = d;
+          }
+        }
+        const topLabel = topDim ? NASA_TLX_DIMENSION_META[topDim].label : '';
+        return `◈ NASA-TLX: ${composite.toFixed(0)}/100 · топ — ${topLabel} (${topVal})`;
+      }
+      return `◈ NASA-TLX: ${answered.length}/${enabledDims.length} измерений`;
     }
     default:
       return null;

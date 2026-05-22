@@ -47,9 +47,13 @@ import type {
   ChoiceContent,
   ContextAnswer,
   ContextContent,
+  NasaTlxAnswer,
+  NasaTlxContent,
   NpsAnswer,
   ScaleAnswer,
   ScaleContent,
+  SeqAnswer,
+  UmuxLiteAnswer,
   AgreementAnswer,
 } from '@/lib/blocks/schemas';
 import { choiceAggregate } from '@/lib/analytics/choice-aggregate';
@@ -57,6 +61,10 @@ import { scaleStats } from '@/lib/analytics/scale-stats';
 import { npsBreakdown } from '@/lib/analytics/nps-breakdown';
 import { agreementRate } from '@/lib/analytics/agreement-rate';
 import { contextAggregate } from '@/lib/analytics/context-aggregate';
+// Quick task 260522-jwn — SEQ + UMUX-Lite + NASA-TLX analytics helpers.
+import { seqStats } from '@/lib/analytics/seq-stats';
+import { umuxLiteStats } from '@/lib/analytics/umux-lite-score';
+import { nasaTlxStats, type NasaTlxDimension } from '@/lib/analytics/nasa-tlx-score';
 import { supabase } from '@/lib/supabase/auth';
 import { AgreementFocusedReport } from './AgreementFocusedReport';
 import { ChoiceFocusedReport } from './ChoiceFocusedReport';
@@ -69,6 +77,10 @@ import { ReportSidebar } from './ReportSidebar';
 import { ReportTopbar } from './ReportTopbar';
 import { ResponsesView } from './ResponsesView';
 import { ScaleFocusedReport } from './ScaleFocusedReport';
+// Quick task 260522-jwn — focused-report cards for SEQ / UMUX-Lite / NASA-TLX.
+import { SeqFocusedReport } from './SeqFocusedReport';
+import { UmuxLiteFocusedReport } from './UmuxLiteFocusedReport';
+import { NasaTlxFocusedReport } from './NasaTlxFocusedReport';
 // Plan 04-06 Task 7 — share-token banner + dialog wiring.
 import { ShareBanner } from '@/components/studio/share/ShareBanner';
 import { ShareSettingsDialog } from '@/components/studio/share/ShareSettingsDialog';
@@ -101,6 +113,10 @@ const SURVEY_ANALYTICAL_TYPES: ReadonlyArray<Block['type']> = [
   'agreement',
   'context',
   'open_question',
+  // Quick task 260522-jwn — feed survey responses to the focused-card router.
+  'seq',
+  'umux_lite',
+  'nasa_tlx',
 ];
 const NON_REPORTABLE_TYPES: ReadonlySet<Block['type']> = new Set(['welcome', 'thanks']);
 
@@ -813,6 +829,67 @@ function FocusedSurveyCard({
       );
       return (
         <ContextFocusedReport
+          block={block}
+          stats={stats}
+          position={position}
+          validSessionCount={validSessionCount}
+          filtersActive={filtersActive}
+          onResetFilters={onResetFilters}
+        />
+      );
+    }
+    case 'seq': {
+      // Quick task 260522-jwn — SEQ is a 7-point scale aggregator wrapper.
+      const stats = seqStats(
+        responsesForBlock as unknown as { session_id: string; answer: SeqAnswer }[],
+      );
+      return (
+        <SeqFocusedReport
+          block={block}
+          stats={stats}
+          position={position}
+          validSessionCount={validSessionCount}
+          filtersActive={filtersActive}
+          onResetFilters={onResetFilters}
+        />
+      );
+    }
+    case 'umux_lite': {
+      // Quick task 260522-jwn — UMUX-Lite composite (0..100).
+      const stats = umuxLiteStats(
+        responsesForBlock as unknown as { session_id: string; answer: UmuxLiteAnswer }[],
+      );
+      return (
+        <UmuxLiteFocusedReport
+          block={block}
+          stats={stats}
+          position={position}
+          validSessionCount={validSessionCount}
+          filtersActive={filtersActive}
+          onResetFilters={onResetFilters}
+        />
+      );
+    }
+    case 'nasa_tlx': {
+      // Quick task 260522-jwn — NASA-TLX RTLX composite + per-dim grid.
+      const content = block.content as NasaTlxContent;
+      const enabledDims = new Set<NasaTlxDimension>();
+      for (const d of [
+        'mental',
+        'physical',
+        'temporal',
+        'performance',
+        'effort',
+        'frustration',
+      ] as const) {
+        if (content.dimensions[d] === true) enabledDims.add(d);
+      }
+      const stats = nasaTlxStats(
+        responsesForBlock as unknown as { session_id: string; answer: NasaTlxAnswer }[],
+        enabledDims,
+      );
+      return (
+        <NasaTlxFocusedReport
           block={block}
           stats={stats}
           position={position}
