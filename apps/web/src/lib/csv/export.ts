@@ -59,14 +59,26 @@ import type {
   ChoiceContent,
   ContextAnswer,
   ContextContent,
+  NasaTlxAnswer,
+  NasaTlxContent,
   NpsAnswer,
   OpenQuestionContent,
   ScaleAnswer,
   ScaleContent,
+  SeqAnswer,
+  UmuxLiteAnswer,
 } from '@/lib/blocks/schemas';
 import type { ClassifyOutcomeResult } from '@/lib/analytics/classify-outcome';
+import { NASA_TLX_DIMENSION_ORDER } from '@/lib/analytics/nasa-tlx-score';
+import { umuxLiteScore } from '@/lib/analytics/umux-lite-score';
 import type { SurveyResponseRow } from '@/lib/queries/survey-responses';
 import type { DesignerSession } from '@/lib/queries/designer-sessions';
+
+import {
+  nasaTlxInterpretation,
+  seqInterpretation,
+  umuxLiteInterpretation,
+} from './interpretations';
 
 export interface BuildCsvOptions {
   /** Symbol to write into empty cells. Defaults to `''` per D-110. */
@@ -136,6 +148,25 @@ function buildHeaders(blocks: readonly Block[]): string[] {
       case 'open_question':
         headers.push(`q${p}_open_question_text`);
         break;
+      case 'seq':
+        headers.push(`q${p}_seq_value`, `q${p}_seq_interpretation`);
+        break;
+      case 'umux_lite':
+        headers.push(
+          `q${p}_umux_item1`,
+          `q${p}_umux_item2`,
+          `q${p}_umux_composite`,
+          `q${p}_umux_interpretation`,
+        );
+        break;
+      case 'nasa_tlx': {
+        const c = block.content as NasaTlxContent;
+        for (const d of NASA_TLX_DIMENSION_ORDER) {
+          if (c.dimensions[d] === true) headers.push(`q${p}_tlx_${d}`);
+        }
+        headers.push(`q${p}_tlx_rtlx`, `q${p}_tlx_interpretation`);
+        break;
+      }
       default:
         // Phase 4.1 / Phase 7 blocks (matrix, ranking, etc.) — punt for now.
         // The CSV header CONTRACT widens when those ship; this function will
@@ -266,6 +297,53 @@ function buildSessionRow(
         const a = ans as { text?: string } | undefined;
         void (block.content as OpenQuestionContent);
         if (typeof a?.text === 'string') out[`q${p}_open_question_text`] = a.text;
+        break;
+      }
+      case 'seq': {
+        const a = ans as Partial<SeqAnswer> | undefined;
+        if (typeof a?.value === 'number') {
+          out[`q${p}_seq_value`] = String(a.value);
+          out[`q${p}_seq_interpretation`] = seqInterpretation(a.value);
+        }
+        break;
+      }
+      case 'umux_lite': {
+        const a = ans as Partial<UmuxLiteAnswer> | undefined;
+        const i1 = a?.item1;
+        const i2 = a?.item2;
+        if (typeof i1 === 'number') out[`q${p}_umux_item1`] = String(i1);
+        if (typeof i2 === 'number') out[`q${p}_umux_item2`] = String(i2);
+        if (typeof i1 === 'number' && typeof i2 === 'number') {
+          const composite = umuxLiteScore(i1, i2);
+          out[`q${p}_umux_composite`] = composite.toFixed(2);
+          // Interpretation evaluated on UNROUNDED composite — boundary cases
+          // (e.g. 84.999) match the report-tile threshold band exactly.
+          out[`q${p}_umux_interpretation`] = umuxLiteInterpretation(composite);
+        }
+        break;
+      }
+      case 'nasa_tlx': {
+        const content = block.content as NasaTlxContent;
+        const a = ans as Partial<NasaTlxAnswer> | undefined;
+        const enabledDims = NASA_TLX_DIMENSION_ORDER.filter((d) => content.dimensions[d] === true);
+        if (a) {
+          for (const d of enabledDims) {
+            const v = a[d];
+            if (typeof v === 'number') out[`q${p}_tlx_${d}`] = String(v);
+          }
+          // Composite + interpretation only when ALL enabled dims answered —
+          // mirrors `nasaTlxStats` partial-row policy. Denominator scales
+          // against enabledDims.length * 20, NOT the fixed 120 from
+          // `nasaTlxScore`, so disabled-dim blocks rescale correctly to 0..100.
+          const allAnswered =
+            enabledDims.length > 0 && enabledDims.every((d) => typeof a[d] === 'number');
+          if (allAnswered) {
+            const total = enabledDims.reduce((sum, d) => sum + (a[d] as number), 0);
+            const rtlx = (total / (enabledDims.length * 20)) * 100;
+            out[`q${p}_tlx_rtlx`] = rtlx.toFixed(2);
+            out[`q${p}_tlx_interpretation`] = nasaTlxInterpretation(rtlx);
+          }
+        }
         break;
       }
       default:
